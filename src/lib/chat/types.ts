@@ -1,0 +1,172 @@
+// Chat types baseados no MCPJam mas adaptados para SATI
+export interface ContentBlock {
+  id: string
+  type: 'text' | 'tool_call' | 'tool_result'
+  content?: string
+  toolCall?: ToolCall
+  toolResult?: ToolResult
+  timestamp: Date
+}
+
+export interface ChatMessage {
+  id: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  timestamp: Date
+  attachments?: Attachment[]
+  toolCalls?: ToolCall[]
+  toolResults?: ToolResult[]
+  contentBlocks?: ContentBlock[]
+  metadata?: MessageMetadata
+}
+
+export interface Attachment {
+  id: string
+  name: string
+  url: string
+  contentType: string
+  size?: number
+}
+
+export interface ToolCall {
+  id: string
+  name: string
+  parameters: Record<string, any>
+  timestamp: Date
+  status: 'pending' | 'executing' | 'completed' | 'error'
+}
+
+export interface ToolResult {
+  id: string
+  toolCallId: string
+  result?: any
+  error?: string
+  timestamp: Date
+}
+
+export interface MessageMetadata {
+  userId?: string
+  sessionId?: string
+  model?: string
+  temperature?: number
+  tokens?: {
+    input: number
+    output: number
+    total: number
+  }
+}
+
+export interface ChatState {
+  messages: ChatMessage[]
+  isLoading: boolean
+  error?: string
+  connectionStatus: 'connected' | 'disconnected' | 'connecting'
+}
+
+export interface ChatActions {
+  sendMessage: (message: string, attachments?: Attachment[]) => Promise<void>
+  stopGeneration: () => void
+  clearChat: () => void
+  regenerateMessage: (messageId: string) => Promise<void>
+  updateMessage: (messageId: string, updates: Partial<ChatMessage>) => void
+}
+
+export type ChatStatus = 'idle' | 'typing' | 'streaming' | 'error'
+
+export interface StreamingMessage {
+  id: string
+  content: string
+  isComplete: boolean
+}
+
+// SATI-specific types
+export interface SATIToolCall extends ToolCall {
+  component?: string // Nome do componente React para renderizar
+  displayMode?: 'inline' | 'fullscreen' | 'pip' | 'minimal'
+}
+
+export interface SATIToolResult extends ToolResult {
+  component?: string
+  componentProps?: Record<string, any>
+  structuredContent?: any
+}
+
+// Model types (reaproveitados do MCPJam)
+export interface ModelDefinition {
+  id: string
+  name: string
+  provider: 'openai' | 'anthropic' | 'google' | 'deepseek' | 'ollama'
+  disabled?: boolean
+  disabledReason?: string
+  maxTokens?: number
+  supportsFunctions?: boolean
+}
+
+// Stream events
+export interface ChatStreamEvent {
+  type: 'text' | 'tool_call' | 'tool_result' | 'error' | 'done'
+  content?: string
+  toolCall?: ToolCall
+  toolResult?: ToolResult
+  error?: string
+  timestamp?: Date
+}
+
+// Hook options
+export interface UseChatOptions {
+  initialMessages?: ChatMessage[]
+  systemPrompt?: string
+  temperature?: number
+  model?: ModelDefinition
+  onMessageSent?: (message: ChatMessage) => void
+  onMessageReceived?: (message: ChatMessage) => void
+  onError?: (error: string) => void
+  onToolCall?: (toolCall: ToolCall) => void
+  onToolResult?: (toolResult: ToolResult) => void
+  onModelChange?: (model: ModelDefinition) => void
+}
+
+// UI Component props
+export interface ChatInputProps {
+  value: string
+  onChange: (value: string) => void
+  onSubmit: (message: string, attachments?: Attachment[]) => void
+  onStop?: () => void
+  disabled?: boolean
+  isLoading?: boolean
+  placeholder?: string
+  className?: string
+  // Model selector
+  currentModel?: ModelDefinition | null
+  availableModels?: ModelDefinition[]
+  onModelChange?: (model: ModelDefinition) => void
+  // Advanced settings
+  systemPrompt?: string
+  onSystemPromptChange?: (prompt: string) => void
+  temperature?: number
+  onTemperatureChange?: (temperature: number) => void
+  // UI state
+  showScrollToBottom?: boolean
+  onScrollToBottom?: () => void
+  hasMessages?: boolean
+  onClearChat?: () => void
+}
+
+export interface MessageProps {
+  message: ChatMessage
+  isLast?: boolean
+  onEdit?: (messageId: string, newContent: string) => void
+  onRegenerate?: (messageId: string) => void
+  onCopy?: (content: string) => void
+  onCallTool?: (toolName: string, params: Record<string, any>) => Promise<any>
+  onSendFollowup?: (message: string) => void
+  showActions?: boolean
+}
+
+export interface ChatInterfaceProps {
+  initialMessages?: ChatMessage[]
+  systemPrompt?: string
+  className?: string
+  onMessageSent?: (message: ChatMessage) => void
+  onError?: (error: string) => void
+}

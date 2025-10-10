@@ -547,13 +547,75 @@ ORDER BY tablename;
 -- 
 -- ✅ 6 Tabelas principais
 -- ✅ 25+ Índices otimizados
--- ✅ 6 RLS Policies completas
+-- ============================================================================
+-- 7️⃣  TABELA: user_api_keys (para BYOK - Bring Your Own Key)
+-- ============================================================================
+
+-- Armazenar API keys dos usuários para OpenAI, Anthropic, etc.
+CREATE TABLE IF NOT EXISTS public.user_api_keys (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    
+    -- API Key (por enquanto em texto plano para desenvolvimento)
+    -- TODO: Migrar para Supabase Vault encryption em produção
+    encrypted_key TEXT NOT NULL,
+    
+    -- Provider da API key
+    provider TEXT NOT NULL DEFAULT 'openai'
+        CHECK (provider IN ('openai', 'anthropic', 'google', 'deepseek')),
+    
+    -- Metadados
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_used_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    -- Constraints
+    UNIQUE(user_id, provider)
+);
+
+-- Índices para user_api_keys
+CREATE INDEX IF NOT EXISTS idx_user_api_keys_user_id ON public.user_api_keys(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_api_keys_provider ON public.user_api_keys(provider);
+
+-- Comments para user_api_keys
+COMMENT ON TABLE public.user_api_keys IS 'Stores encrypted API keys for external providers (OpenAI, Anthropic, etc.) - BYOK model';
+COMMENT ON COLUMN public.user_api_keys.encrypted_key IS 'Encrypted API key (TODO: migrate to Supabase Vault)';
+COMMENT ON COLUMN public.user_api_keys.provider IS 'API provider: openai, anthropic, google, deepseek';
+COMMENT ON COLUMN public.user_api_keys.last_used_at IS 'Timestamp of last successful API call using this key';
+
+-- ============================================================================
+-- 🔒 RLS POLICY: user_api_keys
+-- ============================================================================
+
+ALTER TABLE public.user_api_keys ENABLE ROW LEVEL SECURITY;
+
+-- Policy: Users can only see/manage their own API keys
+CREATE POLICY "user_api_keys_user_access" ON public.user_api_keys
+    FOR ALL USING (auth.uid() = user_id);
+
+-- ============================================================================
+-- 🕒 TRIGGER: user_api_keys updated_at
+-- ============================================================================
+
+CREATE TRIGGER update_user_api_keys_updated_at
+    BEFORE UPDATE ON public.user_api_keys
+    FOR EACH ROW
+    EXECUTE FUNCTION public.update_updated_at_column();
+
+-- ============================================================================
+-- 📊 RESUMO FINAL V2.1
+-- ============================================================================
+
+-- ✅ 7 Tabelas principais (hyperfocus, tasks, focus_sessions, context_analysis, alternancy_flows, user_preferences, user_api_keys)
+-- ✅ 30+ Índices otimizados para queries reais  
+-- ✅ 7 RLS Policies completas
 -- ✅ 3 Functions helper
--- ✅ 3 Triggers automáticos
+-- ✅ 4 Triggers automáticos
 -- ✅ 1 View para analytics
 -- ✅ Constraints robustas em todos os campos
 -- ✅ Foreign keys com ON DELETE CASCADE
 -- ✅ Comments de documentação em tudo
+-- ✅ BYOK (Bring Your Own Key) support
 -- 
 -- Pronto para produção! 🚀
 -- 

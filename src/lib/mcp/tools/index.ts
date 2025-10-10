@@ -7,6 +7,8 @@
 export * from './createHyperfocus';
 export * from './listHyperfocus';
 export * from './getHyperfocus';
+export * from './updateHyperfocus';
+export * from './deleteHyperfocus';
 
 // Task Management
 export * from './createTask';
@@ -40,6 +42,14 @@ import {
   getHyperfocusHandler,
   getHyperfocusMetadata,
 } from './getHyperfocus';
+import {
+  updateHyperfocusHandler,
+  updateHyperfocusMetadata,
+} from './updateHyperfocus';
+import {
+  deleteHyperfocusHandler,
+  deleteHyperfocusMetadata,
+} from './deleteHyperfocus';
 import {
   createTaskHandler,
   createTaskMetadata,
@@ -84,6 +94,14 @@ export const TOOL_REGISTRY: Record<string, { handler: ToolHandler; metadata: Mcp
   getHyperfocus: {
     handler: getHyperfocusHandler,
     metadata: getHyperfocusMetadata,
+  },
+  updateHyperfocus: {
+    handler: updateHyperfocusHandler,
+    metadata: updateHyperfocusMetadata,
+  },
+  deleteHyperfocus: {
+    handler: deleteHyperfocusHandler,
+    metadata: deleteHyperfocusMetadata,
   },
   createTask: {
     handler: createTaskHandler,

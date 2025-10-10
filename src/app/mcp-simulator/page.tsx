@@ -1,33 +1,50 @@
 "use client";
 
-import { ReactNode, useMemo, useState } from "react";
-import {
-  AlternancyFlow,
-  ContextAnalysis,
-  FocusSessionSummary,
-  FocusTimer,
-  HyperfocusCard,
-  HyperfocusList,
-  SubtaskSuggestions,
-  TaskBreakdown,
-} from "@/components";
+import { useState, useMemo } from "react";
+import { ChatInterface } from "@/components/chat/ChatInterface";
+import { ChatMessage } from "@/lib/chat/types";
 
-type Role = "user" | "assistant" | "tool";
+// Importar componentes SATI
+import { HyperfocusCard } from "@/components/HyperfocusCard";
+import { HyperfocusList } from "@/components/HyperfocusList";
+import { TaskBreakdown } from "@/components/TaskBreakdown";
+import { FocusTimer } from "@/components/FocusTimer";
+import { SubtaskSuggestions } from "@/components/SubtaskSuggestions";
+import { ContextAnalysis } from "@/components/ContextAnalysis";
+import { AlternancyFlow } from "@/components/AlternancyFlow";
+import { FocusSessionSummary } from "@/components/FocusSessionSummary";
 
-type Message = {
-  id: string;
-  role: Role;
-  content: string;
-  timestamp: string;
-  component?: ReactNode;
-  componentName?: string;
-};
-
-type ToolDemoConfig = {
+// Definir tipos
+interface ToolDemoConfig {
   label: string;
   description: string;
-  component: ReactNode;
-};
+  component: React.JSX.Element;
+}
+
+// Definir tipo Message para o simulador
+interface Message extends Omit<ChatMessage, 'timestamp'> {
+  timestamp: Date; // Manter consistência com ChatMessage
+  component?: React.JSX.Element;
+}
+
+// Função helper para criar mensagens
+function createSimulatorMessage(
+  role: "user" | "assistant" | "system",
+  content: string,
+  component?: React.JSX.Element
+): Message {
+  return {
+    id: crypto.randomUUID(),
+    role,
+    content,
+    timestamp: new Date(),
+    attachments: [],
+    toolCalls: [],
+    toolResults: [],
+    contentBlocks: [],
+    component,
+  };
+}
 
 const TOOL_DEMOS: Record<string, ToolDemoConfig> = {
   create_hyperfocus: {
@@ -73,24 +90,24 @@ const TOOL_DEMOS: Record<string, ToolDemoConfig> = {
 };
 
 const INITIAL_MESSAGES: Message[] = [
-  {
-    id: "m-1",
-    role: "user",
-    content: "Quero me concentrar em criar o simulador do SATI.",
-    timestamp: new Date().toISOString(),
-  },
-  {
-    id: "m-2",
-    role: "assistant",
-    content:
-      "Posso ajudar com um plano e iniciar uma sessão de foco. Deseja visualizar algum componente?",
-    timestamp: new Date().toISOString(),
-  },
-];
+  createSimulatorMessage("assistant", `Olá! 👋 Eu sou o **SATI**, seu assistente de produtividade especializado em neurodivergentes.
 
-function getTimestamp() {
-  return new Date().toISOString();
-}
+🎯 **O que posso fazer por você:**
+
+• **Criar hiperfocos** - Projetos intensos e focados
+• **Quebrar tarefas** - Dividir trabalho complexo em partes menores  
+• **Gerenciar timer** - Sessões de foco com alternância
+• **Análise de contexto** - Sugestões personalizadas
+• **Fluxos de alternância** - Estratégias para manter o foco
+
+Experimente me perguntar algo como:
+- "Crie um hiperfoco para estudar React"
+- "Quebre esta tarefa em partes menores: desenvolver uma API"
+- "Inicie um timer de 25 minutos"
+- "Analise meu contexto atual"`),
+  createSimulatorMessage("user", "Quero me concentrar em criar o simulador do SATI."),
+  createSimulatorMessage("assistant", "Posso ajudar com um plano e iniciar uma sessão de foco. Deseja visualizar algum componente?"),
+];
 
 export default function MCPSimulatorPage() {
   const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
@@ -103,12 +120,7 @@ export default function MCPSimulatorPage() {
     const trimmed = input.trim();
     if (!trimmed) return;
 
-    const userMessage: Message = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: trimmed,
-      timestamp: getTimestamp(),
-    };
+    const userMessage = createSimulatorMessage("user", trimmed);
 
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
@@ -119,14 +131,11 @@ export default function MCPSimulatorPage() {
     const tool = TOOL_DEMOS[toolId];
     if (!tool) return;
 
-    const toolMessage: Message = {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      content: `SATI renderizou o componente "${tool.label}".`,
-      timestamp: getTimestamp(),
-      component: tool.component,
-      componentName: tool.label,
-    };
+    const toolMessage = createSimulatorMessage(
+      "assistant", 
+      `SATI renderizou o componente "${tool.label}".`,
+      tool.component
+    );
 
     setMessages((prev) => [...prev, toolMessage]);
   };
@@ -153,14 +162,11 @@ export default function MCPSimulatorPage() {
 
     const tool = TOOL_DEMOS[key];
 
-    const assistantMessage: Message = {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      content: `Aqui está uma visualização simulada: ${tool.label}.`,
-      timestamp: getTimestamp(),
-      component: tool.component,
-      componentName: tool.label,
-    };
+    const assistantMessage = createSimulatorMessage(
+      "assistant",
+      `Aqui está uma visualização simulada: ${tool.label}.`,
+      tool.component
+    );
 
     setTimeout(() => {
       setMessages((prev) => [...prev, assistantMessage]);

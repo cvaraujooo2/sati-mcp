@@ -40,6 +40,30 @@ export function FocusTimer() {
   const initialDuration = toolInput?.durationMinutes ?? 25;
   const hyperfocusTitle = toolInput?.hyperfocusTitle ?? 'Foco';
 
+  // Função para lidar com conclusão do timer
+  const handleTimerComplete = useCallback(() => {
+    // Tocar som se habilitado
+    if (isSoundEnabled && toolInput?.alarmSound && toolInput.alarmSound !== 'none') {
+      playAlarmSound(toolInput.alarmSound, toolInput.gentleEnd ?? true);
+    }
+
+    // Vibrar se disponível
+    if (
+      toolInput?.alarmSound === 'vibrate' &&
+      'vibrate' in navigator &&
+      userAgent?.device.type === 'mobile'
+    ) {
+      navigator.vibrate([200, 100, 200, 100, 200]);
+    }
+
+    // Chamar tool para finalizar sessão
+    if (window.openai?.callTool) {
+      window.openai.callTool('endFocusTimer', {
+        sessionId: toolOutput?.sessionId,
+      });
+    }
+  }, [isSoundEnabled, toolInput, toolOutput?.sessionId, userAgent]);
+
   // Calcula tempo restante baseado no endsAt
   useEffect(() => {
     if (!toolOutput?.endsAt || toolOutput.status === 'completed') {
@@ -66,29 +90,6 @@ export function FocusTimer() {
 
     return () => clearInterval(interval);
   }, [handleTimerComplete, toolOutput?.endsAt, toolOutput?.status]);
-
-  const handleTimerComplete = useCallback(() => {
-    // Tocar som se habilitado
-    if (isSoundEnabled && toolInput?.alarmSound && toolInput.alarmSound !== 'none') {
-      playAlarmSound(toolInput.alarmSound, toolInput.gentleEnd ?? true);
-    }
-
-    // Vibrar se disponível
-    if (
-      toolInput?.alarmSound === 'vibrate' &&
-      'vibrate' in navigator &&
-      userAgent?.device.type === 'mobile'
-    ) {
-      navigator.vibrate([200, 100, 200, 100, 200]);
-    }
-
-    // Chamar tool para finalizar sessão
-    if (window.openai?.callTool) {
-      window.openai.callTool('endFocusTimer', {
-        sessionId: toolOutput?.sessionId,
-      });
-    }
-  }, [isSoundEnabled, toolInput, toolOutput?.sessionId, userAgent]);
 
   const handlePauseResume = useCallback(async () => {
     setIsPaused((prev) => !prev);

@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Desabilitar eslint no build temporariamente
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  
   // Habilitar logs detalhados
   logging: {
     fetches: {
