@@ -2,7 +2,7 @@
 
 ## ✅ O que foi feito
 
-Implementei um **bypass temporário de autenticação** para desenvolvimento. Em modo dev, o sistema usa automaticamente o usuário `00000000-0000-0000-0000-000000000001`.
+Implementei um **bypass temporário de autenticação** para desenvolvimento. Em modo dev, o sistema usa automaticamente o usuário `84c419f8-bb51-4a51-bb0d-26a48453f495`.
 
 ## 📋 Pré-requisitos
 
@@ -23,7 +23,7 @@ INSERT INTO public.user_api_keys (
   encrypted_key, 
   provider
 ) VALUES (
-  '00000000-0000-0000-0000-000000000001'::uuid,
+  '84c419f8-bb51-4a51-bb0d-26a48453f495'::uuid,
   'sk-proj-SUA_API_KEY_AQUI', -- ⚠️ COLE SUA API KEY
   'openai'
 )
@@ -41,7 +41,7 @@ Você deve ver no console:
 ```
 ✓ Ready in 1.5s
 ○ Compiling /chat ...
-[DEV MODE] Using fixed user ID: 00000000-0000-0000-0000-000000000001
+[DEV MODE] Using fixed user ID: 84c419f8-bb51-4a51-bb0d-26a48453f495
 ```
 
 ### 3. Acessar o Chat

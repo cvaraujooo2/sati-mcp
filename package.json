@@ -20,8 +20,11 @@
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
     "test:ui": "vitest --ui",
+    "test:ui:run": "vitest run tests/ui",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest watch",
+    "test:all": "npm run test:unit && npm run test:integration && npm run test:ui:run",
+    "test:e2e": "bash ./test-mcp-integration.sh",
     "mcp:inspect": "npx @modelcontextprotocol/inspector@latest",
     "mcp:start": "node mcp-server.mjs",
     "validate": "npm run lint && npm run type-check && npm run test:unit"

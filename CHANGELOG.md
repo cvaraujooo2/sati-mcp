@@ -422,3 +422,57 @@ Chat API (/api/chat)
 
 *Atualizado em: 09/10/2025*  
 *Status: Day 2.1 e 2.2 CONCLUÍDOS ✅ | Próximo: Day 2.3 MCP Tools*
+### 🧪 Debug de integração entre ferramentas
+
+Contexto
+- Sintoma: Primeira tentativa de criação de subtarefas não ocorria quando o modelo enviava o título do hiperfoco em vez do UUID (falha de validação). Em execuções seguintes, após listar hiperfocos, a ferramenta recebia o UUID e conseguia criar subtarefas.
+- Objetivo: Tornar o fluxo resiliente e rastreável de ponta a ponta (modelo → tools → UI), eliminando o erro na primeira tentativa e garantindo renderização do componente de tarefas.
+
+Ações executadas
+- Sanitização do histórico do modelo (input do provedor)
+  - Removido conteúdo de tool-call/tool-result do input do modelo e forçada normalização de conteúdo para string no histórico.
+  - Adicionados logs de validação do shape das mensagens imediatamente antes da chamada ao streaming.
+  - Arquivo: [src/app/api/chat/route.ts](src/app/api/chat/route.ts)
+- Normalização defensiva do hyperfocusId (título → UUID)
+  - Se hyperfocusId não parecer um UUID, a tool tenta resolver pelo título do hiperfoco do usuário (consulta no Supabase) antes da validação Zod.
+  - Evita a falha na primeira tentativa quando o agente envia um título em vez do UUID.
+  - Arquivo: [src/lib/mcp/tools/breakIntoSubtasks.ts](src/lib/mcp/tools/breakIntoSubtasks.ts)
+- Robustez do componente TaskBreakdown na UI
+  - Componente agora aceita props e faz fallback para toolOutput. Sincroniza lista de tarefas tanto por props quanto por toolOutput.
+  - Adicionados logs de diagnóstico para facilitar troubleshooting (ex.: contagem e amostras de tasks).
+  - Arquivo: [src/components/TaskBreakdown.tsx](src/components/TaskBreakdown.tsx)
+
+Motivação técnica
+- Prevenir AI_InvalidPromptError no provedor (AI SDK) ao garantir que o input seja um array de mensagens compatível (ModelMessage[] com content string).
+- Evitar dependência rígida do agente em sempre passar UUID (resolução de título → UUID no backend deixa a experiência tolerante a erros).
+- Garantir que o componente de tarefas renderize mesmo quando o Apps SDK não popular toolOutput imediatamente (props primeiro, toolOutput como fallback).
+
+Resultados esperados (depois dos ajustes)
+- Primeira chamada de quebra em subtarefas bem-sucedida mesmo que o modelo envie o título do hiperfoco.
+- Logs de backend mostrando:
+  - Resolução de título → UUID (quando aplicável) em breakIntoSubtasks
+  - Mensagens validadas antes de streamText (sem arrays/tipos não suportados no content)
+- UI exibindo TaskBreakdown com a lista de tarefas recém-criadas; console do navegador com logs “[UI][TaskBreakdown] …” confirmando sincronização.
+- Nenhuma mudança de contrato para callers; apenas maior tolerância e observabilidade.
+
+Como validar manualmente
+- Fluxo 1 (título → subtarefas)
+  - Criar hiperfoco pelo chat
+  - Pedir “Crie subtarefas …” referenciando o hiperfoco pelo título
+  - Verificar no terminal:
+    - Log de resolução “título → UUID” na ferramenta de subtarefas
+    - “Subtarefas criadas automaticamente” com count esperado
+- Fluxo 2 (UUID → subtarefas)
+  - Repetir fluxo informando o UUID; deve continuar funcionando
+- UI
+  - Conferir o componente TaskBreakdown renderizado com as tarefas e logs de sincronização
+
+Observações e riscos
+- Em ambientes fora de desenvolvimento, validar RLS e permissões para inserts na tabela de tasks.
+- O mapeamento de ferramentas para componentes permanece alinhado; breakIntoSubtasks retorna TaskBreakdown quando autoCreate=true e SubtaskSuggestions caso contrário (comportamento prévio preservado).
+- Logs adicionais foram incluídos para facilitar novas investigações sem impactar performance de forma significativa.
+
+Arquivos impactados
+- [src/app/api/chat/route.ts](src/app/api/chat/route.ts) — sanitização do histórico e logs
+- [src/lib/mcp/tools/breakIntoSubtasks.ts](src/lib/mcp/tools/breakIntoSubtasks.ts) — normalização de hyperfocusId (título → UUID)
+- [src/components/TaskBreakdown.tsx](src/components/TaskBreakdown.tsx) — suporte a props + logs de sincronização

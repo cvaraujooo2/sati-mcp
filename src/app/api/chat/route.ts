@@ -5,24 +5,24 @@ import { streamText, tool, type CoreMessage } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createClient } from '@/lib/supabase/server'
 import { TOOL_REGISTRY, listAllToolMetadata, getToolHandler } from '@/lib/mcp/tools'
-import { 
-  handleToolError, 
-  executeWithTimeout, 
+import {
+  handleToolError,
+  executeWithTimeout,
   validateToolPermission,
-  logToolError 
+  logToolError
 } from '@/lib/mcp/error-handler'
-import { 
-  ConversationHistoryManager, 
+import {
+  ConversationHistoryManager,
   type ConversationMessage,
   hasUnresolvedToolCallsInConversation,
   buildContextFromConversation
 } from '@/lib/supabase/conversation-history'
-import { 
+import {
   OptimizedToolExecutor,
   createToolExecutionContext,
   type ToolExecutionContext
 } from '@/lib/mcp/optimized-executor'
-import { 
+import {
   globalToolRegistry,
   type ToolMetadata
 } from '@/lib/mcp/optimized-registry'
@@ -83,14 +83,14 @@ const ChatRequestSchema = z.object({
     id: z.string(),
     role: z.enum(['user', 'assistant', 'system']),
     content: z.string(),
-    timestamp: z.union([z.string(), z.date()]).transform(val => 
+    timestamp: z.union([z.string(), z.date()]).transform(val =>
       typeof val === 'string' ? new Date(val) : val
     ),
     toolCalls: z.array(z.object({
       id: z.string(),
       name: z.string(),
       parameters: z.record(z.any()),
-      timestamp: z.union([z.string(), z.date()]).transform(val => 
+      timestamp: z.union([z.string(), z.date()]).transform(val =>
         typeof val === 'string' ? new Date(val) : val
       ),
       status: z.enum(['pending', 'executing', 'completed', 'error'])
@@ -100,7 +100,7 @@ const ChatRequestSchema = z.object({
       toolCallId: z.string(),
       result: z.any().optional(),
       error: z.string().optional(),
-      timestamp: z.union([z.string(), z.date()]).transform(val => 
+      timestamp: z.union([z.string(), z.date()]).transform(val =>
         typeof val === 'string' ? new Date(val) : val
       )
     })).optional()
@@ -115,16 +115,16 @@ const ChatRequestSchema = z.object({
 // Helper: Converter JSON Schema para Zod Schema
 function convertJsonSchemaToZod(jsonSchema: any): z.ZodTypeAny {
   const type = jsonSchema.type
-  
+
   if (type === 'string') {
     // Se tem enum, retorna ZodEnum diretamente
     if (jsonSchema.enum) {
       const enumSchema = z.enum(jsonSchema.enum as [string, ...string[]])
-      return jsonSchema.default !== undefined 
+      return jsonSchema.default !== undefined
         ? (enumSchema.default(jsonSchema.default) as z.ZodTypeAny)
         : (enumSchema as z.ZodTypeAny)
     }
-    
+
     // Caso contrário, ZodString normal
     let schema: z.ZodTypeAny = z.string()
     if (jsonSchema.minLength) schema = (schema as z.ZodString).min(jsonSchema.minLength)
@@ -132,7 +132,7 @@ function convertJsonSchemaToZod(jsonSchema: any): z.ZodTypeAny {
     if (jsonSchema.default !== undefined) schema = (schema as z.ZodString).default(jsonSchema.default)
     return schema
   }
-  
+
   if (type === 'number' || type === 'integer') {
     let schema: z.ZodTypeAny = type === 'integer' ? z.number().int() : z.number()
     if (jsonSchema.minimum !== undefined) schema = (schema as z.ZodNumber).min(jsonSchema.minimum)
@@ -140,13 +140,13 @@ function convertJsonSchemaToZod(jsonSchema: any): z.ZodTypeAny {
     if (jsonSchema.default !== undefined) schema = (schema as z.ZodNumber).default(jsonSchema.default)
     return schema
   }
-  
+
   if (type === 'boolean') {
     let schema: z.ZodTypeAny = z.boolean()
     if (jsonSchema.default !== undefined) schema = (schema as z.ZodBoolean).default(jsonSchema.default)
     return schema
   }
-  
+
   if (type === 'array') {
     const itemSchema = jsonSchema.items ? convertJsonSchemaToZod(jsonSchema.items) : z.any()
     let schema: z.ZodTypeAny = z.array(itemSchema)
@@ -154,7 +154,7 @@ function convertJsonSchemaToZod(jsonSchema: any): z.ZodTypeAny {
     if (jsonSchema.maxItems) schema = (schema as z.ZodArray<any>).max(jsonSchema.maxItems)
     return schema
   }
-  
+
   if (type === 'object') {
     const properties = jsonSchema.properties || {}
     const shape = Object.entries(properties).reduce((acc, [key, value]) => {
@@ -163,7 +163,7 @@ function convertJsonSchemaToZod(jsonSchema: any): z.ZodTypeAny {
     }, {} as Record<string, z.ZodTypeAny>)
     return z.object(shape) as z.ZodTypeAny
   }
-  
+
   // Fallback para any
   return z.any()
 }
@@ -178,7 +178,7 @@ function sendSseEvent(
   if (!controller || controller.desiredSize === null) {
     return false // Silently skip - controller closed
   }
-  
+
   try {
     const payload = event === "[DONE]" ? "[DONE]" : JSON.stringify(event)
     controller.enqueue(encoder.encode(`data: ${payload}\n\n`))
@@ -205,7 +205,7 @@ function hasUnresolvedToolCalls(messages: CoreMessage[]): boolean {
 
   for (const msg of messages) {
     if (!msg) continue
-    
+
     if (msg.role === "assistant" && Array.isArray(msg.content)) {
       for (const c of msg.content) {
         if (c?.type === "tool-call") toolCallIds.add(c.toolCallId)
@@ -216,7 +216,7 @@ function hasUnresolvedToolCalls(messages: CoreMessage[]): boolean {
       }
     }
   }
-  
+
   // Verifica se há tool calls sem resultados
   for (const id of toolCallIds) {
     if (!toolResultIds.has(id)) return true
@@ -225,92 +225,45 @@ function hasUnresolvedToolCalls(messages: CoreMessage[]): boolean {
 }
 
 function buildMessageHistory(messages: ChatMessage[]): CoreMessage[] {
+  // Garante compatibilidade com ModelMessage[]:
+  // - Remove quaisquer 'tool-call' e 'tool-result' do input do modelo
+  // - Força content a ser string (ou texto derivado) para todas as mensagens
+  const toText = (val: any): string => {
+    if (typeof val === 'string') return val
+    if (Array.isArray(val)) {
+      // Extrai somente pedaços de texto, ignorando tipos não-textuais
+      const texts = val
+        .filter((c: any) => c && typeof c === 'object' && c.type === 'text' && typeof c.text === 'string')
+        .map((c: any) => c.text)
+      if (texts.length > 0) return texts.join('')
+      // Fallback seguro
+      try {
+        return JSON.stringify(val)
+      } catch {
+        return String(val)
+      }
+    }
+    if (val && typeof val === 'object') {
+      if (typeof (val as any).text === 'string') return (val as any).text
+      try {
+        return JSON.stringify(val)
+      } catch {
+        return String(val)
+      }
+    }
+    return val != null ? String(val) : ''
+  }
+
   const coreMessages: CoreMessage[] = []
-  
+
   for (const msg of messages) {
-    // Mensagem básica sem tool calls/results
-    if (!msg.toolCalls?.length && !msg.toolResults?.length) {
-      coreMessages.push({
-        role: msg.role as 'user' | 'assistant' | 'system',
-        content: msg.content
-      })
-      continue
-    }
-    
-    // Mensagem do assistant com tool calls
-    if (msg.role === 'assistant' && msg.toolCalls?.length) {
-      const content: any[] = []
-      
-      // Adicionar texto se existir
-      if (msg.content?.trim()) {
-        content.push({
-          type: 'text',
-          text: msg.content
-        })
-      }
-      
-      // Adicionar tool calls
-      msg.toolCalls.forEach(toolCall => {
-        content.push({
-          type: 'tool-call',
-          toolCallId: toolCall.id,
-          toolName: toolCall.name,
-          args: toolCall.parameters
-        })
-      })
-      
-      coreMessages.push({
-        role: 'assistant',
-        content: content.length > 0 ? content : msg.content
-      })
-      
-      // Se há tool results, adicionar como mensagem 'tool' separada
-      if (msg.toolResults?.length) {
-        const toolContent: any[] = []
-        
-        msg.toolResults.forEach(toolResult => {
-          // Simplificar o resultado para evitar estruturas complexas
-          let resultValue = toolResult.result
-          
-          // Se o resultado tem estruturas complexas, simplificar
-          if (resultValue && typeof resultValue === 'object') {
-            // Remover propriedades que causam problemas de validação
-            if (resultValue.structuredContent) {
-              resultValue = JSON.stringify(resultValue.structuredContent)
-            } else if (resultValue.component) {
-              resultValue = JSON.stringify(resultValue.component)
-            } else {
-              resultValue = JSON.stringify(resultValue)
-            }
-          }
-          
-          toolContent.push({
-            type: 'tool-result',
-            toolCallId: toolResult.toolCallId,
-            toolName: msg.toolCalls?.find(tc => tc.id === toolResult.toolCallId)?.name || 'unknown',
-            result: resultValue,
-            isError: !!toolResult.error
-          })
-        })
-        
-        if (toolContent.length > 0) {
-          coreMessages.push({
-            role: 'tool',
-            content: toolContent
-          })
-        }
-      }
-      
-      continue
-    }
-    
-    // Fallback para mensagem simples
+    // Sempre mantemos apenas texto no histórico de entrada do modelo
     coreMessages.push({
       role: msg.role as 'user' | 'assistant' | 'system',
-      content: msg.content || ''
+      content: toText(msg.content)
     })
   }
-  
+
   return coreMessages
 }
 
@@ -319,32 +272,32 @@ export async function POST(req: NextRequest) {
     // 1. Validar request body
     const body = await req.json()
     console.log('[Chat API] Received request with', body.messages?.length || 0, 'messages')
-    
+
     const validatedData = ChatRequestSchema.parse(body)
-    
+
     // 2. DEV BYPASS: Usar usuário fixo para testes
     // TODO: REMOVER EM PRODUÇÃO!
     const isDev = process.env.NODE_ENV === 'development'
     let userId: string
-    
+
     if (isDev) {
       // ⚠️ MODO DESENVOLVIMENTO: Usar usuário fixo
-      userId = '00000000-0000-0000-0000-000000000001'
+      userId = '84c419f8-bb51-4a51-bb0d-26a48453f495'
       console.log('[DEV MODE] Using fixed user ID:', userId)
     } else {
       // PRODUÇÃO: Autenticação real
       const supabase = createClient()
       const { data: { user }, error: authError } = await supabase.auth.getUser()
-      
+
       if (authError || !user) {
-        return NextResponse.json({ 
-          error: 'Unauthorized' 
+        return NextResponse.json({
+          error: 'Unauthorized'
         }, { status: 401 })
       }
-      
+
       userId = user.id
     }
-    
+
     // 3. Buscar API key do usuário
     const supabase = createClient()
     const { data: apiKeyData, error: keyError } = await supabase
@@ -353,24 +306,24 @@ export async function POST(req: NextRequest) {
       .eq('user_id', userId)
       .eq('provider', 'openai')
       .single()
-    
+
     console.log('[API Key Query]', { userId, keyError, hasData: !!apiKeyData })
-    
+
     if (keyError || !apiKeyData) {
       console.error('[API Key Error]', keyError)
-      return NextResponse.json({ 
-        error: 'API key not found. Please configure your OpenAI API key in Settings.' 
+      return NextResponse.json({
+        error: 'API key not found. Please configure your OpenAI API key in Settings.'
       }, { status: 400 })
     }
-    
+
     // 4. Configurar OpenAI client
     const openai = createOpenAI({
       apiKey: apiKeyData.encrypted_key, // TODO: Implementar decrypt se necessário
     })
-    
+
     // 5. Gerenciador de histórico de conversas
     const historyManager = new ConversationHistoryManager()
-    
+
     // 6. Carregar contexto de conversa anterior se necessário
     let contextualSystemPrompt = validatedData.systemPrompt || `
 Você é o SATI, um assistente especializado em ajudar pessoas neurodivergentes (ADHD/Autismo) com foco e produtividade.
@@ -483,15 +436,15 @@ A rotação manterá você engajado sem burnout. Vamos começar?"
     if (validatedData.conversationId && validatedData.continueFromHistory) {
       try {
         const previousConversation = await historyManager.loadConversation(
-          validatedData.conversationId, 
+          validatedData.conversationId,
           userId
         )
-        
+
         if (previousConversation) {
           const conversationContext = buildContextFromConversation(previousConversation)
           contextualSystemPrompt += '\n\n' + conversationContext
           console.log('[ConversationHistory] Loaded context from conversation:', validatedData.conversationId)
-          
+
           // Verificar se há tool calls não resolvidos
           if (hasUnresolvedToolCallsInConversation(previousConversation.messages)) {
             console.log('[ConversationHistory] Found unresolved tool calls, will continue execution')
@@ -502,44 +455,44 @@ A rotação manterá você engajado sem burnout. Vamos começar?"
         // Continua sem contexto se falhar
       }
     }
-    
+
     // 7. Construir histórico de mensagens (incluindo tool calls/results)
     const messageHistory = buildMessageHistory(validatedData.messages)
-    
+
     // 7. Configurar sistema otimizado de ferramentas
     const toolExecutor = new OptimizedToolExecutor()
-    
+
     // Registrar todas as ferramentas no registry otimizado
     const toolMetadata = listAllToolMetadata()
     console.log('[Tools] Loading', toolMetadata.length, 'MCP tools into optimized registry')
-    
+
     const handlerMap = new Map<string, (params: Record<string, any>, userId: string) => Promise<any>>()
-    
+
     for (const meta of toolMetadata) {
       try {
         // Converter JSON Schema para Zod
-        const inputSchema = meta.inputSchema.type === 'object' 
-          ? meta.inputSchema 
+        const inputSchema = meta.inputSchema.type === 'object'
+          ? meta.inputSchema
           : { type: 'object', properties: meta.inputSchema.properties || {} }
-        
+
         const properties = inputSchema.properties || {}
         const zodProperties: Record<string, z.ZodTypeAny> = {}
-        
+
         for (const [key, value] of Object.entries(properties)) {
           zodProperties[key] = convertJsonSchemaToZod(value as any)
         }
-        
+
         const zodSchema = Object.keys(zodProperties).length > 0
           ? z.object(zodProperties)
           : z.object({})
-        
+
         // Pegar o handler original
         const originalHandler = getToolHandler(meta.name)
         if (!originalHandler) {
           console.error(`[Tool Error] Handler not found for ${meta.name}`)
           continue
         }
-        
+
         // Registrar no registry otimizado
         const optimizedMetadata: ToolMetadata = {
           name: meta.name,
@@ -550,23 +503,23 @@ A rotação manterá você engajado sem burnout. Vamos começar?"
           cacheable: meta.name.includes('create') || meta.name.includes('update'), // Cache para operações CRUD
           timeout: 30000
         }
-        
+
         globalToolRegistry.registerTool(optimizedMetadata, originalHandler)
         handlerMap.set(meta.name, originalHandler)
-        
+
         console.log(`[Tool] Registered optimized tool: ${meta.name}`)
       } catch (error) {
         console.error(`[Tool Error] Failed to register tool ${meta.name}:`, error)
       }
     }
-    
+
     // Converter para formato AI SDK com otimizações
     const tools = globalToolRegistry.toAiSdkTools(userId)
-    
+
     // 8. Preparar sistema de streaming com multi-step conversation
     console.log('[OpenAI] Calling with', Object.keys(tools).length, 'tools:', Object.keys(tools).join(', '))
     console.log('[Messages] Processing', messageHistory.length, 'messages in history')
-    
+
     // 9. Implementar streaming com multi-step conversation (padrão MCPJam/inspector)
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
@@ -592,7 +545,7 @@ A rotação manterá você engajado sem burnout. Vamos começar?"
             validatedData.temperature,
             userId
           )
-          
+
           // Salvar conversa no Supabase para continuidade
           try {
             const conversationMessages: ConversationMessage[] = validatedData.messages.map(msg => ({
@@ -603,230 +556,248 @@ A rotação manterá você engajado sem burnout. Vamos começar?"
               toolCalls: msg.toolCalls,
               toolResults: msg.toolResults
             }))
-            
+
             // Adicionar mensagens geradas durante o streaming
             conversationMessages.push(...finalMessages)
-            
+
             const conversationId = await historyManager.saveConversation(
-              userId, 
+              userId,
               conversationMessages,
               validatedData.conversationId
             )
-            
+
             // Enviar ID da conversa para o cliente
             sendSseEvent(controller, encoder, {
               type: 'conversation_saved',
               conversationId,
               timestamp: new Date().toISOString()
             })
-            
+
             console.log('[ConversationHistory] Saved conversation:', conversationId)
           } catch (error) {
             console.error('[ConversationHistory] Failed to save conversation:', error)
             // Não falha o request se não conseguir salvar
           }
-          
+
           sendSseEvent(controller, encoder, "[DONE]")
           safeCloseController(controller)
         } catch (error) {
           console.error('[SATI] Stream error:', error)
-          sendSseEvent(controller, encoder, { 
-            type: 'error', 
-            error: error instanceof Error ? error.message : 'Unknown error' 
+          sendSseEvent(controller, encoder, {
+            type: 'error',
+            error: error instanceof Error ? error.message : 'Unknown error'
           })
           safeCloseController(controller)
         }
       }
     })
 
-// Função para multi-step streaming baseada no MCPJam/inspector
-async function createMultiStepStreamingResponse(
-  model: any,
-  tools: Record<string, any>,
-  streamingContext: StreamingContext,
-  temperature: number,
-  userId: string
-): Promise<ConversationMessage[]> {
-  let steps = 0
-  const generatedMessages: ConversationMessage[] = []
-  let currentAssistantMessage: ConversationMessage | null = null
-  
-  while (steps < MAX_AGENT_STEPS) {
-    console.log(`[SATI] Starting conversation step ${steps + 1}/${MAX_AGENT_STEPS}`)
-    let accumulatedText = ""
-    const iterationToolCalls: ToolCall[] = []
-    const iterationToolResults: ToolResult[] = []
+    // Função para multi-step streaming baseada no MCPJam/inspector
+    async function createMultiStepStreamingResponse(
+      model: any,
+      tools: Record<string, any>,
+      streamingContext: StreamingContext,
+      temperature: number,
+      userId: string
+    ): Promise<ConversationMessage[]> {
+      let steps = 0
+      const generatedMessages: ConversationMessage[] = []
+      let currentAssistantMessage: ConversationMessage | null = null
 
-    const streamResult = await streamText({
-      model,
-      messages: streamingContext.messageHistory,
-      temperature,
-      tools,
-    })
+      while (steps < MAX_AGENT_STEPS) {
+        console.log(`[SATI] Starting conversation step ${steps + 1}/${MAX_AGENT_STEPS}`)
+        let accumulatedText = ""
+        const iterationToolCalls: ToolCall[] = []
+        const iterationToolResults: ToolResult[] = []
 
-    // Process streaming chunks
-    for await (const chunk of streamResult.fullStream) {
-      switch (chunk.type) {
-        case 'text-delta': {
-          const text = chunk.text
-          if (text) {
-            accumulatedText += text
-            
-            // Iniciar nova mensagem do assistente se necessário
-            if (!currentAssistantMessage) {
-              currentAssistantMessage = {
-                id: crypto.randomUUID(),
-                role: 'assistant',
-                content: '',
-                timestamp: new Date(),
-                toolCalls: [],
-                toolResults: []
-              }
+        // Logs de validação para garantir compatibilidade com ModelMessage[]
+        try {
+          console.log('[Messages][Validation] Preparing to call streamText with', streamingContext.messageHistory.length, 'messages')
+          const summary = streamingContext.messageHistory.map((m, i) => {
+            const c: any = (m as any).content
+            return {
+              idx: i,
+              role: (m as any).role,
+              contentType: typeof c,
+              isArray: Array.isArray(c),
+              textPreview: typeof c === 'string' ? c.slice(0, 160) : undefined
             }
-            
-            currentAssistantMessage.content += text
-            
-            sendSseEvent(streamingContext.controller, streamingContext.encoder, {
-              type: 'text',
-              content: text,
-            })
-          }
-          break
-        }
-        
-        case 'tool-call': {
-          const currentToolCallId = ++streamingContext.toolCallId
-          streamingContext.lastEmittedToolCallId = currentToolCallId
-          const name = chunk.toolName
-          const parameters = 'input' in chunk ? chunk.input : 'args' in chunk ? (chunk as any).args : {}
-
-          // Store tool name for later reference
-          streamingContext.toolCallIdToName.set(currentToolCallId, name)
-
-          const toolCall: ToolCall = {
-            id: currentToolCallId.toString(),
-            name,
-            parameters: parameters as Record<string, any>,
-            timestamp: new Date(),
-            status: 'executing'
-          }
-          
-          iterationToolCalls.push(toolCall)
-          
-          // Adicionar à mensagem atual
-          if (!currentAssistantMessage) {
-            currentAssistantMessage = {
-              id: crypto.randomUUID(),
-              role: 'assistant',
-              content: '',
-              timestamp: new Date(),
-              toolCalls: [],
-              toolResults: []
-            }
-          }
-          currentAssistantMessage.toolCalls!.push(toolCall)
-          
-          sendSseEvent(streamingContext.controller, streamingContext.encoder, {
-            type: 'tool_call',
-            toolCall: {
-              id: currentToolCallId,
-              name,
-              parameters,
-              timestamp: new Date().toISOString(),
-              status: 'executing',
-            },
           })
-          break
+          console.log('[Messages][Validation] Summary:', summary)
+        } catch (e) {
+          console.warn('[Messages][Validation] Failed to summarize messages:', e)
         }
-        
-        case 'tool-result': {
-          const result = 'output' in chunk ? chunk.output : 'result' in chunk ? (chunk as any).result : chunk
-          const currentToolCallId = streamingContext.lastEmittedToolCallId ?? ++streamingContext.toolCallId
 
-          const toolResult: ToolResult = {
-            id: crypto.randomUUID(),
-            toolCallId: currentToolCallId.toString(),
-            result,
-            timestamp: new Date()
-          }
-          
-          iterationToolResults.push(toolResult)
-          
-          // Adicionar à mensagem atual
-          if (currentAssistantMessage) {
-            currentAssistantMessage.toolResults!.push(toolResult)
-            
-            // Marcar tool call como completado
-            const toolCall = currentAssistantMessage.toolCalls!.find(tc => tc.id === currentToolCallId.toString())
-            if (toolCall) {
-              toolCall.status = 'completed'
-              
-              // Log da execução via executor otimizado
-              try {
-                const toolName = streamingContext.toolCallIdToName.get(currentToolCallId) || toolCall.name
-                await toolExecutor.logToolExecution(
-                  {
-                    userId,
-                    requestId: currentToolCallId.toString(),
-                    toolName,
-                    parameters: toolCall.parameters
-                  },
-                  {
-                    result,
-                    executionTimeMs: Date.now() - toolCall.timestamp.getTime()
+        const streamResult = await streamText({
+          model,
+          messages: streamingContext.messageHistory,
+          temperature,
+          tools,
+        })
+
+        // Process streaming chunks
+        for await (const chunk of streamResult.fullStream) {
+          switch (chunk.type) {
+            case 'text-delta': {
+              const text = chunk.text
+              if (text) {
+                accumulatedText += text
+
+                // Iniciar nova mensagem do assistente se necessário
+                if (!currentAssistantMessage) {
+                  currentAssistantMessage = {
+                    id: crypto.randomUUID(),
+                    role: 'assistant',
+                    content: '',
+                    timestamp: new Date(),
+                    toolCalls: [],
+                    toolResults: []
                   }
-                )
-              } catch (logError) {
-                console.warn('[Tool Executor] Failed to log execution:', logError)
+                }
+
+                currentAssistantMessage.content += text
+
+                sendSseEvent(streamingContext.controller, streamingContext.encoder, {
+                  type: 'text',
+                  content: text,
+                })
               }
+              break
+            }
+
+            case 'tool-call': {
+              const currentToolCallId = ++streamingContext.toolCallId
+              streamingContext.lastEmittedToolCallId = currentToolCallId
+              const name = chunk.toolName
+              const parameters = 'input' in chunk ? chunk.input : 'args' in chunk ? (chunk as any).args : {}
+
+              // Store tool name for later reference
+              streamingContext.toolCallIdToName.set(currentToolCallId, name)
+
+              const toolCall: ToolCall = {
+                id: currentToolCallId.toString(),
+                name,
+                parameters: parameters as Record<string, any>,
+                timestamp: new Date(),
+                status: 'executing'
+              }
+
+              iterationToolCalls.push(toolCall)
+
+              // Adicionar à mensagem atual
+              if (!currentAssistantMessage) {
+                currentAssistantMessage = {
+                  id: crypto.randomUUID(),
+                  role: 'assistant',
+                  content: '',
+                  timestamp: new Date(),
+                  toolCalls: [],
+                  toolResults: []
+                }
+              }
+              currentAssistantMessage.toolCalls!.push(toolCall)
+
+              sendSseEvent(streamingContext.controller, streamingContext.encoder, {
+                type: 'tool_call',
+                toolCall: {
+                  id: currentToolCallId,
+                  name,
+                  parameters,
+                  timestamp: new Date().toISOString(),
+                  status: 'executing',
+                },
+              })
+              break
+            }
+
+            case 'tool-result': {
+              const result = 'output' in chunk ? chunk.output : 'result' in chunk ? (chunk as any).result : chunk
+              const currentToolCallId = streamingContext.lastEmittedToolCallId ?? ++streamingContext.toolCallId
+
+              const toolResult: ToolResult = {
+                id: crypto.randomUUID(),
+                toolCallId: currentToolCallId.toString(),
+                result,
+                timestamp: new Date()
+              }
+
+              iterationToolResults.push(toolResult)
+
+              // Adicionar à mensagem atual
+              if (currentAssistantMessage) {
+                currentAssistantMessage.toolResults!.push(toolResult)
+
+                // Marcar tool call como completado
+                const toolCall = currentAssistantMessage.toolCalls!.find(tc => tc.id === currentToolCallId.toString())
+                if (toolCall) {
+                  toolCall.status = 'completed'
+
+                  // Log da execução via executor otimizado
+                  try {
+                    const toolName = streamingContext.toolCallIdToName.get(currentToolCallId) || toolCall.name
+                    await toolExecutor.logToolExecution(
+                      {
+                        userId,
+                        requestId: currentToolCallId.toString(),
+                        toolName,
+                        parameters: toolCall.parameters
+                      },
+                      {
+                        result,
+                        executionTimeMs: Date.now() - toolCall.timestamp.getTime()
+                      }
+                    )
+                  } catch (logError) {
+                    console.warn('[Tool Executor] Failed to log execution:', logError)
+                  }
+                }
+              }
+
+              sendSseEvent(streamingContext.controller, streamingContext.encoder, {
+                type: 'tool_result',
+                toolResult: {
+                  id: currentToolCallId.toString(),
+                  toolCallId: currentToolCallId.toString(),
+                  result,
+                  timestamp: new Date().toISOString(),
+                },
+              })
+              break
             }
           }
-          
-          sendSseEvent(streamingContext.controller, streamingContext.encoder, {
-            type: 'tool_result',
-            toolResult: {
-              id: currentToolCallId.toString(),
-              toolCallId: currentToolCallId.toString(),
-              result,
-              timestamp: new Date().toISOString(),
-            },
-          })
-          break
         }
+
+        await streamResult.consumeStream()
+
+        // Finalizar mensagem do assistente da iteração
+        if (currentAssistantMessage && (accumulatedText || iterationToolCalls.length)) {
+          generatedMessages.push(currentAssistantMessage)
+          currentAssistantMessage = null
+        }
+
+        // Add response messages to history
+        const response = await streamResult.response
+        const responseMessages = response?.messages || []
+        if (responseMessages.length) {
+          streamingContext.messageHistory.push(...(responseMessages as CoreMessage[]))
+        }
+
+        steps++
+        const finishReason = await streamResult.finishReason
+        const shouldContinue = finishReason === "tool-calls" ||
+          (accumulatedText.length === 0 && iterationToolResults.length > 0)
+
+        console.log(`[SATI] Step ${steps} completed. FinishReason: ${finishReason}, AccumulatedText: ${accumulatedText.length} chars, ToolCalls: ${iterationToolCalls.length}, ToolResults: ${iterationToolResults.length}, ShouldContinue: ${shouldContinue}`)
+
+        if (!shouldContinue) break
       }
+
+      if (steps >= MAX_AGENT_STEPS) {
+        console.log(`[SATI] Reached maximum steps (${MAX_AGENT_STEPS})`)
+      }
+
+      return generatedMessages
     }
-
-    await streamResult.consumeStream()
-
-    // Finalizar mensagem do assistente da iteração
-    if (currentAssistantMessage && (accumulatedText || iterationToolCalls.length)) {
-      generatedMessages.push(currentAssistantMessage)
-      currentAssistantMessage = null
-    }
-
-    // Add response messages to history
-    const response = await streamResult.response
-    const responseMessages = response?.messages || []
-    if (responseMessages.length) {
-      streamingContext.messageHistory.push(...(responseMessages as CoreMessage[]))
-    }
-
-    steps++
-    const finishReason = await streamResult.finishReason
-    const shouldContinue = finishReason === "tool-calls" || 
-                          (accumulatedText.length === 0 && iterationToolResults.length > 0)
-
-    console.log(`[SATI] Step ${steps} completed. FinishReason: ${finishReason}, AccumulatedText: ${accumulatedText.length} chars, ToolCalls: ${iterationToolCalls.length}, ToolResults: ${iterationToolResults.length}, ShouldContinue: ${shouldContinue}`)
-
-    if (!shouldContinue) break
-  }
-
-  if (steps >= MAX_AGENT_STEPS) {
-    console.log(`[SATI] Reached maximum steps (${MAX_AGENT_STEPS})`)
-  }
-
-  return generatedMessages
-}
 
     return new Response(stream, {
       headers: {
@@ -835,49 +806,49 @@ async function createMultiStepStreamingResponse(
         'Connection': 'keep-alive',
       },
     })
-    
+
   } catch (error) {
     console.error('[SATI Chat API] Error:', error)
-    
+
     if (error instanceof z.ZodError) {
       console.error('[SATI Chat API] Validation errors:', JSON.stringify(error.errors, null, 2))
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'Invalid request data',
         details: error.errors,
         message: error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ')
       }, { status: 400 })
     }
-    
+
     // Handle OpenAI specific errors
     if (error instanceof Error) {
       if (error.message.includes('API key')) {
-        return NextResponse.json({ 
-          error: 'Invalid OpenAI API key. Please check your settings.' 
+        return NextResponse.json({
+          error: 'Invalid OpenAI API key. Please check your settings.'
         }, { status: 400 })
       }
-      
+
       if (error.message.includes('quota') || error.message.includes('billing')) {
-        return NextResponse.json({ 
-          error: 'OpenAI quota exceeded. Please check your OpenAI billing.' 
+        return NextResponse.json({
+          error: 'OpenAI quota exceeded. Please check your OpenAI billing.'
         }, { status: 402 })
       }
-      
+
       if (error.message.includes('rate limit')) {
-        return NextResponse.json({ 
-          error: 'Rate limit exceeded. Please try again in a moment.' 
+        return NextResponse.json({
+          error: 'Rate limit exceeded. Please try again in a moment.'
         }, { status: 429 })
       }
     }
-    
-    return NextResponse.json({ 
-      error: 'Internal server error' 
+
+    return NextResponse.json({
+      error: 'Internal server error'
     }, { status: 500 })
   }
 }
 
 // Método GET para health check
 export async function GET() {
-  return NextResponse.json({ 
+  return NextResponse.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     service: 'SATI Chat API'

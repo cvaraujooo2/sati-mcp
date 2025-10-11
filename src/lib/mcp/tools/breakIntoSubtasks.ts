@@ -23,6 +23,11 @@ const breakIntoSubtasksSchema = z.object({
 
 export type BreakIntoSubtasksInput = z.infer<typeof breakIntoSubtasksSchema>;
 
+// UUID detector simples
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 export async function breakIntoSubtasksHandler(
   input: BreakIntoSubtasksInput,
   userId: string
@@ -30,7 +35,43 @@ export async function breakIntoSubtasksHandler(
   log.info({ userId, input }, 'Quebrando tarefa em subtarefas');
 
   try {
-    const validated = breakIntoSubtasksSchema.parse(input);
+    // Normalização defensiva do hyperfocusId: se vier título, tentar resolver para UUID
+    let normalizedInput = { ...input };
+
+    if (typeof normalizedInput.hyperfocusId === 'string' && !isUuid(normalizedInput.hyperfocusId)) {
+      log.warn(
+        { userId, provided: normalizedInput.hyperfocusId },
+        'hyperfocusId não parece ser um UUID; tentando resolver por título'
+      );
+
+      const { data: byTitle, error: titleErr } = await supabase
+        .from('hyperfocus')
+        .select('id, title')
+        .eq('user_id', userId)
+        .eq('title', normalizedInput.hyperfocusId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (titleErr) {
+        log.error({ error: titleErr }, 'Erro ao buscar hiperfoco por título');
+      }
+
+      if (byTitle?.id) {
+        log.info(
+          { userId, title: normalizedInput.hyperfocusId, resolvedId: byTitle.id },
+          'Resolvido hyperfocusId a partir do título'
+        );
+        normalizedInput.hyperfocusId = byTitle.id;
+      } else {
+        log.warn(
+          { userId, title: normalizedInput.hyperfocusId },
+          'Não foi possível resolver título para UUID; validação Zod deve falhar'
+        );
+      }
+    }
+
+    const validated = breakIntoSubtasksSchema.parse(normalizedInput);
 
     // Validar que hiperfoco existe e pertence ao usuário
     const { data: hyperfocus, error: hyperfocusError } = await supabase
@@ -148,22 +189,22 @@ export async function breakIntoSubtasksHandler(
       },
       component: validated.autoCreate
         ? {
-            type: 'inline',
-            name: 'TaskBreakdown',
-            props: {
-              hyperfocusId: validated.hyperfocusId,
-              hyperfocusTitle: hyperfocus.title,
-              tasks: allTasks,
-            },
-          }
-        : {
-            type: 'inline',
-            name: 'SubtaskSuggestions',
-            props: {
-              hyperfocusId: validated.hyperfocusId,
-              suggestions,
-            },
+          type: 'inline',
+          name: 'TaskBreakdown',
+          props: {
+            hyperfocusId: validated.hyperfocusId,
+            hyperfocusTitle: hyperfocus.title,
+            tasks: allTasks,
           },
+        }
+        : {
+          type: 'inline',
+          name: 'SubtaskSuggestions',
+          props: {
+            hyperfocusId: validated.hyperfocusId,
+            suggestions,
+          },
+        },
     };
   } catch (error) {
     if (error instanceof z.ZodError) {

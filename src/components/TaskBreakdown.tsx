@@ -21,8 +21,8 @@ function extractTasksFromToolResponse(response: unknown): Task[] | null {
 
   const payload =
     'result' in response &&
-    response.result &&
-    typeof response.result === 'object'
+      response.result &&
+      typeof response.result === 'object'
       ? (response as { result: unknown }).result
       : response;
 
@@ -62,13 +62,26 @@ function extractTasksFromToolResponse(response: unknown): Task[] | null {
     }));
 }
 
-export function TaskBreakdown() {
+export function TaskBreakdown(props?: Partial<TaskBreakdownOutput>) {
   const toolOutput = useToolOutput<TaskBreakdownOutput>();
   const theme = useTheme();
 
-  const hyperfocusId = toolOutput?.hyperfocusId ?? '';
-  const hyperfocusTitle = toolOutput?.hyperfocusTitle ?? '';
-  const initialTasks = toolOutput?.tasks ?? [];
+  // Debug logs to validate data flow
+  try {
+    console.log('[UI][TaskBreakdown] Init', {
+      source: 'TaskBreakdown',
+      hasWindowOpenAi: typeof window !== 'undefined' && !!window.openai,
+      toolOutputNull: toolOutput == null,
+      toolOutputKeys: toolOutput ? Object.keys(toolOutput) : [],
+      propsReceived: props ?? null,
+    });
+  } catch (e) {
+    console.warn('[UI][TaskBreakdown] Init log failed', e);
+  }
+
+  const hyperfocusId = props?.hyperfocusId ?? toolOutput?.hyperfocusId ?? '';
+  const hyperfocusTitle = props?.hyperfocusTitle ?? toolOutput?.hyperfocusTitle ?? '';
+  const initialTasks = props?.tasks ?? toolOutput?.tasks ?? [];
 
   const [tasks, setTasks] = useState<Task[]>(() => [...initialTasks]);
   const [isAddingTask, setIsAddingTask] = useState(false);
@@ -77,7 +90,13 @@ export function TaskBreakdown() {
   // Sincronizar quando toolOutput mudar
   useEffect(() => {
     if (toolOutput?.tasks) {
+      console.log('[UI][TaskBreakdown] Sync toolOutput.tasks', {
+        count: Array.isArray(toolOutput.tasks) ? toolOutput.tasks.length : 0,
+        sample: Array.isArray(toolOutput.tasks) ? toolOutput.tasks.slice(0, 2) : [],
+      });
       setTasks(toolOutput.tasks);
+    } else {
+      console.log('[UI][TaskBreakdown] No toolOutput.tasks to sync');
     }
   }, [toolOutput?.tasks]);
 
@@ -93,6 +112,17 @@ export function TaskBreakdown() {
     };
   }, [tasks]);
 
+  // Também sincronizar via props do componente (quando toolOutput não estiver populado)
+  useEffect(() => {
+    if (props?.tasks && Array.isArray(props.tasks)) {
+      console.log('[UI][TaskBreakdown] Sync props.tasks', {
+        count: props.tasks.length,
+        sample: props.tasks.slice(0, 2),
+      });
+      setTasks(props.tasks);
+    }
+  }, [props?.tasks]);
+
   const handleToggleTask = async (taskId: string) => {
     const currentTask = tasks.find((task) => task.id === taskId);
     if (!currentTask) {
@@ -105,9 +135,9 @@ export function TaskBreakdown() {
       prevTasks.map((task) =>
         task.id === taskId
           ? {
-              ...task,
-              completed: nextCompleted,
-            }
+            ...task,
+            completed: nextCompleted,
+          }
           : task
       )
     );
@@ -133,9 +163,9 @@ export function TaskBreakdown() {
         prevTasks.map((task) =>
           task.id === taskId
             ? {
-                ...task,
-                completed: currentTask.completed,
-              }
+              ...task,
+              completed: currentTask.completed,
+            }
             : task
         )
       );
@@ -229,9 +259,8 @@ export function TaskBreakdown() {
             </span>
 
             <span
-              className={`flex-1 text-sm ${
-                task.completed ? `${mutedColor} line-through` : textColor
-              }`}
+              className={`flex-1 text-sm ${task.completed ? `${mutedColor} line-through` : textColor
+                }`}
             >
               {index + 1}. {task.title}
             </span>
