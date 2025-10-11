@@ -167,6 +167,8 @@ export interface ChatInterfaceProps {
   initialMessages?: ChatMessage[]
   systemPrompt?: string
   className?: string
+  demoMessage?: string | null
   onMessageSent?: (message: ChatMessage) => void
   onError?: (error: string) => void
+  onDemoMessageProcessed?: () => void
 }

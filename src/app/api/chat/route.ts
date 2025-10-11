@@ -329,7 +329,7 @@ export async function POST(req: NextRequest) {
     
     if (isDev) {
       // ⚠️ MODO DESENVOLVIMENTO: Usar usuário fixo
-      userId = '00000000-0000-0000-0000-000000000001'
+      userId = '84c419f8-bb51-4a51-bb0d-26a48453f495'
       console.log('[DEV MODE] Using fixed user ID:', userId)
     } else {
       // PRODUÇÃO: Autenticação real
