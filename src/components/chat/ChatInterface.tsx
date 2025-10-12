@@ -39,8 +39,10 @@ export function ChatInterface({
   initialMessages = [],
   systemPrompt,
   className,
+  demoMessage,
   onMessageSent,
   onError,
+  onDemoMessageProcessed,
 }: ChatInterfaceProps) {
   // Chat state
   const {
@@ -94,6 +96,50 @@ export function ChatInterface({
       setTimeout(scrollToBottom, 50)
     }
   }, [messages, isAtBottom])
+
+  // Listen for clear chat events from tool palette
+  useEffect(() => {
+    const handleClearChat = () => {
+      console.log('[ChatInterface] Clearing chat from palette command');
+      clearChat();
+    };
+
+    window.addEventListener('sati-clear-chat', handleClearChat);
+    
+    return () => {
+      window.removeEventListener('sati-clear-chat', handleClearChat);
+    };
+  }, [clearChat])
+
+  // Process demo message from tool palette
+  useEffect(() => {
+    if (demoMessage && demoMessage.trim() && !isLoading) {
+      console.log('[ChatInterface] Processing demo message:', demoMessage);
+      
+      // Set input first
+      setInput(demoMessage);
+      
+      // Auto-send after a short delay to show the input being set
+      const timer = setTimeout(() => {
+        try {
+          sendMessage(demoMessage);
+          // Limpar o input após enviar a mensagem
+          setTimeout(() => {
+            setInput('');
+          }, 100);
+          onDemoMessageProcessed?.();
+        } catch (error) {
+          console.error('[ChatInterface] Error sending demo message:', error);
+          // Limpar input mesmo em caso de erro
+          setInput('');
+          onDemoMessageProcessed?.();
+        }
+      }, 800); // Increased delay for better UX
+
+      // Cleanup timeout if component unmounts
+      return () => clearTimeout(timer);
+    }
+  }, [demoMessage, isLoading, setInput, sendMessage, onDemoMessageProcessed])
 
   // Handle message actions
   const handleEdit = (messageId: string, newContent: string) => {

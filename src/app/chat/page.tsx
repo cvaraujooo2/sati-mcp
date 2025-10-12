@@ -1,39 +1,153 @@
 "use client";
 
+import { useState, useCallback } from "react";
 import { ChatInterface } from "@/components/chat/ChatInterface";
+import { SATIToolPalette } from "@/components/chat/SATIToolPalette";
+import { DemoExecutionFeedback } from "@/components/chat/DemoExecutionFeedback";
+import { useHotkeys } from "@/lib/hooks/useHotkeys";
+import { Button } from "@/components/ui/button";
+import { Palette, Info } from "lucide-react";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
-export default function MCPSimulatorPage() {
+export default function ChatPage() {
+  const [showToolPalette, setShowToolPalette] = useState(false);
+  const [isExecutingDemo, setIsExecutingDemo] = useState(false);
+  const [demoMessage, setDemoMessage] = useState<string | null>(null);
+  const [currentDemoTool, setCurrentDemoTool] = useState<string | null>(null);
+
   const handleMessageSent = (message: unknown) => {
     console.log("Message sent:", message);
+    // Limpar demo message após envio
+    if (demoMessage) {
+      setDemoMessage(null);
+      setIsExecutingDemo(false);
+      setCurrentDemoTool(null);
+    }
   };
 
   const handleError = (error: string) => {
     console.error("Chat error:", error);
+    setIsExecutingDemo(false);
+    setCurrentDemoTool(null);
     // TODO: Show toast notification
   };
 
-  return (
-    <div className="h-screen flex flex-col">
-      {/* Header */}
-      <header className="border-b bg-background/95 backdrop-blur p-4">
-        <div className="max-w-4xl mx-auto">
-          <h1 className="text-xl font-semibold text-foreground">
-            SATI • Chat Interface
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Assistente de produtividade para neurodivergentes
-          </p>
-        </div>
-      </header>
+  const handleToolDemo = useCallback(async (toolName: string, prompt: string) => {
+    console.log(`[Demo] Executing tool: ${toolName}`);
+    console.log(`[Demo] Prompt: ${prompt}`);
 
-      {/* Chat Interface */}
-      <div className="flex-1">
-        <ChatInterface
-          onMessageSent={handleMessageSent}
-          onError={handleError}
-          systemPrompt="Você é o SATI, um assistente especializado em produtividade para pessoas neurodivergentes (ADHD/Autismo). Use suas ferramentas MCP para ajudar com hiperfocos, tarefas, timers e análise de contexto."
-        />
+    setIsExecutingDemo(true);
+    setCurrentDemoTool(toolName);
+    
+    // Usar estado para comunicar com ChatInterface
+    setDemoMessage(prompt);
+
+    // Auto-clear demo state após timeout se não for processado
+    setTimeout(() => {
+      if (demoMessage === prompt) {
+        setDemoMessage(null);
+        setIsExecutingDemo(false);
+        setCurrentDemoTool(null);
+      }
+    }, 8000); // Aumentar timeout para 8s
+  }, [demoMessage]);
+
+  // Keyboard shortcuts
+  useHotkeys('cmd+shift+p', () => {
+    setShowToolPalette(prev => !prev);
+  });
+
+  useHotkeys('ctrl+shift+p', () => {
+    setShowToolPalette(prev => !prev);
+  });
+
+  // Quick tool shortcuts
+  useHotkeys('cmd+1', () => {
+    handleToolDemo('createHyperfocus', 'Crie um hiperfoco para dominar Next.js 14 com App Router e React Server Components, estimando 2 horas');
+  });
+
+  useHotkeys('cmd+2', () => {
+    handleToolDemo('startFocusTimer', 'Inicie um timer de foco de 25 minutos para estudar TypeScript avançado');
+  });
+
+  return (
+    <TooltipProvider>
+      <div className="h-screen flex flex-col">
+        {/* Header */}
+        <header className="border-b bg-background/95 backdrop-blur p-4">
+          <div className="max-w-4xl mx-auto flex justify-between items-center">
+            <div>
+              <h1 className="text-xl font-semibold text-foreground">
+                SATI • Chat Interface
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Assistente de produtividade para neurodivergentes
+              </p>
+            </div>
+            
+            {/* Controls */}
+            <div className="flex items-center gap-3">
+              {isExecutingDemo && (
+                <DemoExecutionFeedback
+                  isExecuting={isExecutingDemo}
+                  toolName={currentDemoTool || 'Tool'}
+                  status="executing"
+                />
+              )}
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowToolPalette(!showToolPalette)}
+                className="gap-2"
+              >
+                <Palette className="h-4 w-4" />
+                <span className="hidden sm:inline">
+                  {showToolPalette ? 'Ocultar Tools' : 'Mostrar Tools'}
+                </span>
+                <span className="sm:hidden">Tools</span>
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                asChild
+              >
+                <a 
+                  href="/mcp-simulator" 
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="gap-2"
+                >
+                  <Info className="h-4 w-4" />
+                  <span className="hidden sm:inline">Simulador</span>
+                </a>
+              </Button>
+            </div>
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Chat Interface */}
+          <div className="flex-1 flex flex-col">
+            <ChatInterface
+              demoMessage={demoMessage}
+              onMessageSent={handleMessageSent}
+              onError={handleError}
+              onDemoMessageProcessed={() => setDemoMessage(null)}
+              systemPrompt="Você é o SATI, um assistente especializado em produtividade para pessoas neurodivergentes (ADHD/Autismo). Use suas ferramentas MCP para ajudar com hiperfocos, tarefas, timers e análise de contexto."
+            />
+          </div>
+          
+          {/* SATI Tool Palette */}
+          <SATIToolPalette
+            onToolDemo={handleToolDemo}
+            isExpanded={showToolPalette}
+            onToggle={setShowToolPalette}
+          />
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }
