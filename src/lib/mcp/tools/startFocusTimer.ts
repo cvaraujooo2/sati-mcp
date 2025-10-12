@@ -4,7 +4,7 @@
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/server';
 import { DatabaseError, NotFoundError, ValidationError, BusinessLogicError } from '@/lib/utils/errors';
 import { toolLogger } from '@/lib/utils/logger';
 import { McpToolMetadata, AUTH_SCOPES } from '../types/metadata';
@@ -30,6 +30,8 @@ export async function startFocusTimerHandler(
   log.info({ userId, input }, 'Iniciando timer de foco');
 
   try {
+    const supabase = await createClient();
+
     const validated = startFocusTimerSchema.parse(input);
 
     // Validar que hiperfoco existe e pertence ao usuário

@@ -4,7 +4,7 @@
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/server';
 import { DatabaseError, NotFoundError, ValidationError, BusinessLogicError } from '@/lib/utils/errors';
 import { toolLogger } from '@/lib/utils/logger';
 import { McpToolMetadata, AUTH_SCOPES } from '../types/metadata';
@@ -27,6 +27,8 @@ export async function endFocusTimerHandler(input: EndFocusTimerInput, userId: st
   log.info({ userId, input }, 'Finalizando timer de foco');
 
   try {
+    const supabase = await createClient();
+
     const validated = endFocusTimerSchema.parse(input);
 
     // Buscar sessão

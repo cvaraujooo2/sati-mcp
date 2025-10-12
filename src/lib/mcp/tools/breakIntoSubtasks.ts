@@ -1,10 +1,12 @@
 /**
  * Break Into Subtasks Tool
- * Analisa uma descrição e sugere/cria subtarefas automaticamente
+ * Analisa uma descrição e sugere/cria subtarefas automaticamente usando LLM
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/server';
+import { createOpenAI } from '@ai-sdk/openai';
+import { generateText } from 'ai';
 import { DatabaseError, NotFoundError, ValidationError } from '@/lib/utils/errors';
 import { toolLogger } from '@/lib/utils/logger';
 import { McpToolMetadata, AUTH_SCOPES } from '../types/metadata';
@@ -35,6 +37,8 @@ export async function breakIntoSubtasksHandler(
   log.info({ userId, input }, 'Quebrando tarefa em subtarefas');
 
   try {
+    const supabase = await createClient();
+
     // Normalização defensiva do hyperfocusId: se vier título, tentar resolver para UUID
     let normalizedInput = { ...input };
 
@@ -91,10 +95,11 @@ export async function breakIntoSubtasksHandler(
       throw new NotFoundError('Hiperfoco');
     }
 
-    // Gerar subtarefas sugeridas usando análise heurística
-    const suggestions = generateSubtaskSuggestions(
+    // Gerar subtarefas sugeridas usando análise com LLM
+    const suggestions = await generateSubtaskSuggestions(
       validated.taskDescription,
-      validated.numSubtasks
+      validated.numSubtasks,
+      userId
     );
 
     // Se autoCreate=true, criar as tarefas no banco
@@ -221,10 +226,143 @@ export async function breakIntoSubtasksHandler(
 // ============================================================================
 
 /**
- * Gera sugestões de subtarefas baseado em heurísticas
- * Em produção, isso seria feito por um LLM (GPT-4, Claude, etc)
+ * Gera sugestões de subtarefas usando LLM (OpenAI GPT-4)
+ * Segue as regras rigorosas do prompt do SATI para criar subtarefas acionáveis
  */
-function generateSubtaskSuggestions(
+async function generateSubtaskSuggestions(
+  description: string,
+  numSubtasks: number,
+  userId: string
+): Promise<Array<{ title: string; description: string; estimatedMinutes: number }>> {
+  try {
+    // Obter cliente Supabase com sessão do servidor
+    const supabase = await createClient();
+    
+    // Buscar API key do usuário
+    const { data: apiKeyData, error: keyError } = await supabase
+      .from('user_api_keys')
+      .select('encrypted_key')
+      .eq('user_id', userId)
+      .eq('provider', 'openai')
+      .single();
+
+    if (keyError || !apiKeyData) {
+      log.warn({ userId }, 'API key não encontrada, usando fallback heurístico');
+      return generateSubtaskSuggestionsHeuristic(description, numSubtasks);
+    }
+
+    // Configurar OpenAI client
+    const openai = createOpenAI({
+      apiKey: apiKeyData.encrypted_key,
+    });
+
+    const systemPrompt = `Você é um especialista em quebrar tarefas complexas em subtarefas acionáveis para pessoas neurodivergentes (ADHD/Autismo).
+
+REGRAS RIGOROSAS PARA CRIAÇÃO DE SUBTAREFAS:
+
+1. **TAREFAS ACIONÁVEIS**: Cada subtarefa DEVE começar com um VERBO DE AÇÃO claro
+   ✅ BOM: "Instalar Django via pip", "Criar arquivo models.py", "Escrever função de autenticação"
+   ❌ RUIM: "Django instalado", "Models", "Autenticação"
+
+2. **TÍTULOS CONCRETOS E ESPECÍFICOS**: Use linguagem precisa e objetiva
+   ✅ BOM: "Configurar banco PostgreSQL localmente"
+   ❌ RUIM: "Configurar banco de dados"
+
+3. **DESCRIÇÕES DETALHADAS**: Forneça uma descrição clara do QUE fazer e COMO fazer
+   ✅ BOM: "Executar 'pip install django' no terminal para instalar o framework Django versão 4.x"
+   ❌ RUIM: "Instalar Django" (sem descrição ou descrição vaga)
+
+4. **GRANULARIDADE ADEQUADA**: 
+   - Tarefas de 15-30 min para ADHD (foco curto)
+   - Tarefas de 30-60 min para autismo (foco profundo)
+   - NUNCA criar tarefas genéricas ou muito amplas
+
+5. **ORDEM LÓGICA**: Subtarefas devem seguir uma sequência natural de execução
+   Exemplo: Instalar → Configurar → Criar estrutura → Implementar → Testar
+
+6. **ESTIMATIVA REALISTA**: Considere o tempo real necessário, não o ideal
+
+7. **EVITE JARGÃO EXCESSIVO**: Use termos técnicos quando necessário, mas explique na descrição
+
+Retorne APENAS um JSON array com as subtarefas no formato:
+[
+  {
+    "title": "Verbo de ação + especificação clara",
+    "description": "Descrição detalhada de O QUE fazer e COMO fazer",
+    "estimatedMinutes": número_realista
+  }
+]
+
+IMPORTANTE: Não inclua explicações, apenas o array JSON puro.`;
+
+    const userPrompt = `Quebre a seguinte tarefa em exatamente ${numSubtasks} subtarefas acionáveis e bem detalhadas:
+
+TAREFA: ${description}
+
+Lembre-se:
+- Títulos começam com verbos de ação
+- Descrições detalhadas e práticas
+- Estimativas realistas de tempo (15-60 minutos por tarefa)
+- Ordem lógica de execução
+- Linguagem clara para neurodivergentes
+
+Retorne apenas o array JSON com as ${numSubtasks} subtarefas.`;
+
+    log.info({ userId, description: description.slice(0, 100) }, 'Gerando subtarefas com LLM');
+
+    const { text } = await generateText({
+      model: openai('gpt-4o-mini'),
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.7,
+      maxRetries: 2,
+    });
+
+    // Parse do JSON retornado
+    const cleanedText = text.trim().replace(/```json\n?/g, '').replace(/```\n?/g, '');
+    const suggestions = JSON.parse(cleanedText);
+
+    // Validar estrutura
+    if (!Array.isArray(suggestions)) {
+      throw new Error('LLM não retornou um array');
+    }
+
+    // Validar cada subtarefa
+    const validatedSuggestions = suggestions.slice(0, numSubtasks).map((s: any, index: number) => {
+      if (!s.title || !s.description || typeof s.estimatedMinutes !== 'number') {
+        log.warn({ suggestion: s, index }, 'Subtarefa com estrutura inválida');
+        return {
+          title: s.title || `Subtarefa ${index + 1}`,
+          description: s.description || 'Descrição a ser definida',
+          estimatedMinutes: s.estimatedMinutes || 30,
+        };
+      }
+      return {
+        title: String(s.title),
+        description: String(s.description),
+        estimatedMinutes: Math.max(5, Math.min(180, Number(s.estimatedMinutes))),
+      };
+    });
+
+    log.info(
+      { userId, count: validatedSuggestions.length },
+      'Subtarefas geradas com sucesso via LLM'
+    );
+
+    return validatedSuggestions;
+  } catch (error) {
+    log.error({ error }, 'Erro ao gerar subtarefas com LLM, usando fallback heurístico');
+    return generateSubtaskSuggestionsHeuristic(description, numSubtasks);
+  }
+}
+
+/**
+ * Fallback: Gera sugestões de subtarefas baseado em heurísticas simples
+ * Usado quando LLM não está disponível
+ */
+function generateSubtaskSuggestionsHeuristic(
   description: string,
   numSubtasks: number
 ): Array<{ title: string; description: string; estimatedMinutes: number }> {

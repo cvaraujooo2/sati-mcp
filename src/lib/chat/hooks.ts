@@ -106,15 +106,7 @@ export function useChat(options: UseChatOptions = {}) {
   useEffect(() => {
     async function checkApiKey() {
       try {
-        // DEV BYPASS: Assumir que tem API key em desenvolvimento
-        const isDev = process.env.NODE_ENV === 'development'
-        if (isDev) {
-          console.log('[DEV MODE] Skipping API key check, assuming key exists')
-          setHasApiKey(true)
-          return
-        }
-        
-        // PRODUÇÃO: Verificar API key real
+        // Verificar autenticação e API key
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) {
           setHasApiKey(false)
@@ -200,15 +192,10 @@ export function useChat(options: UseChatOptions = {}) {
       // Create abort controller
       abortControllerRef.current = new AbortController()
 
-      // DEV BYPASS: Em desenvolvimento, não precisa de autenticação
-      // O backend já usa um userId fixo
-      const isDev = process.env.NODE_ENV === 'development'
-      if (!isDev) {
-        // PRODUÇÃO: Verificar autenticação real
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-          throw new Error("Usuário não autenticado")
-        }
+      // Verificar autenticação
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        throw new Error("Usuário não autenticado")
       }
 
       // Prepare messages for API

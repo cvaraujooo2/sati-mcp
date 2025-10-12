@@ -4,7 +4,7 @@
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/server';
 import { DatabaseError, ValidationError } from '@/lib/utils/errors';
 import { toolLogger } from '@/lib/utils/logger';
 import { McpToolMetadata, AUTH_SCOPES } from '../types/metadata';
@@ -27,6 +27,9 @@ export async function listHyperfocusHandler(input: ListHyperfocusInput, userId: 
 
   try {
     const validated = listHyperfocusSchema.parse(input);
+
+    // Obter cliente Supabase com sessão do servidor
+    const supabase = await createClient();
 
     // Query base
     let query = supabase
@@ -64,10 +67,11 @@ export async function listHyperfocusHandler(input: ListHyperfocusInput, userId: 
       throw new DatabaseError('Falha ao carregar hiperfocos');
     }
 
-    // Buscar contagem de tarefas para cada hiperfoco
+    // Buscar contagem de tarefas e dados para cada hiperfoco
     const hyperfocusWithTasks = await Promise.all(
-      (hyperfocusList || []).map(async (hf) => {
-        const { count, error: countError } = await supabase
+      (hyperfocusList || []).map(async (hf: any) => {
+        // 1. Contar total de tarefas
+        const { count: totalTasks, error: countError } = await supabase
           .from('tasks')
           .select('id', { count: 'exact', head: true })
           .eq('hyperfocus_id', hf.id);
@@ -76,16 +80,46 @@ export async function listHyperfocusHandler(input: ListHyperfocusInput, userId: 
           log.warn({ hyperfocusId: hf.id, error: countError }, 'Erro ao contar tarefas');
         }
 
+        // 2. Contar tarefas completadas
+        const { count: completedTasks, error: completedError } = await supabase
+          .from('tasks')
+          .select('id', { count: 'exact', head: true })
+          .eq('hyperfocus_id', hf.id)
+          .eq('completed', true);
+
+        if (completedError) {
+          log.warn({ hyperfocusId: hf.id, error: completedError }, 'Erro ao contar tarefas completadas');
+        }
+
+        // 3. Buscar tarefas (limitado para performance)
+        const { data: tasks, error: tasksError } = await supabase
+          .from('tasks')
+          .select('id, title, completed, estimated_minutes')
+          .eq('hyperfocus_id', hf.id)
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (tasksError) {
+          log.warn({ hyperfocusId: hf.id, error: tasksError }, 'Erro ao buscar tarefas');
+        }
+
         return {
           id: hf.id,
           title: hf.title,
           description: hf.description,
           color: hf.color,
           estimatedTimeMinutes: hf.estimated_time_minutes,
+          taskCount: totalTasks || 0,
+          completedCount: completedTasks || 0,
+          tasks: (tasks || []).map((t: any) => ({
+            id: t.id,
+            title: t.title,
+            completed: t.completed,
+            estimatedMinutes: t.estimated_minutes,
+          })),
           createdAt: hf.created_at,
           updatedAt: hf.updated_at,
           archived: hf.archived,
-          taskCount: count || 0,
         };
       })
     );
@@ -109,7 +143,8 @@ export async function listHyperfocusHandler(input: ListHyperfocusInput, userId: 
         type: 'inline',
         name: 'HyperfocusList',
         props: {
-          hyperfocusList: hyperfocusWithTasks,
+          hyperfocuses: hyperfocusWithTasks,
+          total: hyperfocusWithTasks.length,
           showArchived: validated.archived,
         },
       },

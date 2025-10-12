@@ -43,8 +43,8 @@ export interface Conversation {
 export class ConversationHistoryManager {
   private supabase: SupabaseClient
 
-  constructor(supabaseClient?: SupabaseClient) {
-    this.supabase = supabaseClient || createClient()
+  constructor(supabaseClient: SupabaseClient) {
+    this.supabase = supabaseClient
   }
 
   /**

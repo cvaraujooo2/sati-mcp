@@ -156,98 +156,46 @@ export class ApiKeyService {
   }
 
   /**
-   * Valida uma API key testando uma chamada real à API
+   * Valida uma API key testando uma chamada via endpoint backend
+   * IMPORTANTE: Agora usa endpoint backend para não expor key no cliente
    */
   async validateApiKey(provider: ApiProvider, apiKey: string): Promise<ApiKeyValidationResult> {
     try {
-      switch (provider) {
-        case 'openai':
-          return await this.validateOpenAIKey(apiKey)
-        case 'anthropic':
-          return await this.validateAnthropicKey(apiKey)
-        case 'google':
-          return await this.validateGoogleKey(apiKey)
-        case 'deepseek':
-          return await this.validateDeepSeekKey(apiKey)
-        default:
-          return { isValid: false, error: "Unsupported provider" }
-      }
-    } catch (error) {
-      return { 
-        isValid: false, 
-        error: error instanceof Error ? error.message : "Validation failed"
-      }
-    }
-  }
-
-  /**
-   * Valida uma API key da OpenAI
-   */
-  private async validateOpenAIKey(apiKey: string): Promise<ApiKeyValidationResult> {
-    try {
-      const response = await fetch('https://api.openai.com/v1/models', {
+      // Chamar endpoint backend para validação segura
+      const response = await fetch('/api/settings/validate-key', {
+        method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          provider,
+          apiKey,
+        }),
       })
 
       if (!response.ok) {
-        const error = await response.text()
-        return { 
-          isValid: false, 
-          error: `OpenAI API error: ${response.status} ${error}`
+        const error = await response.json()
+        return {
+          isValid: false,
+          error: error.error || 'Erro ao validar API key',
         }
       }
 
-      const data = await response.json()
-      
-      // Verificar se tem acesso aos modelos que usamos
-      const hasGPT4 = data.data?.some((model: any) => 
-        model.id.includes('gpt-4') || model.id.includes('gpt-3.5')
-      )
-
-      if (!hasGPT4) {
-        return { 
-          isValid: false, 
-          error: "API key doesn't have access to required models"
-        }
+      const result = await response.json()
+      return {
+        isValid: result.isValid,
+        error: result.error,
+        model: result.model,
+        organization: result.organization,
       }
 
-      return { 
-        isValid: true,
-        model: data.data?.[0]?.id || "unknown"
-      }
     } catch (error) {
+      console.error('[validateApiKey] Error:', error)
       return { 
         isValid: false, 
-        error: `Network error: ${error instanceof Error ? error.message : 'Unknown'}`
+        error: 'Erro de conexão. Verifique sua internet.',
       }
     }
-  }
-
-  /**
-   * Valida uma API key da Anthropic (placeholder)
-   */
-  private async validateAnthropicKey(apiKey: string): Promise<ApiKeyValidationResult> {
-    // TODO: Implementar validação da Anthropic quando necessário
-    return { isValid: false, error: "Anthropic validation not implemented yet" }
-  }
-
-  /**
-   * Valida uma API key da Google (placeholder)
-   */
-  private async validateGoogleKey(apiKey: string): Promise<ApiKeyValidationResult> {
-    // TODO: Implementar validação da Google quando necessário
-    return { isValid: false, error: "Google validation not implemented yet" }
-  }
-
-  /**
-   * Valida uma API key da DeepSeek (placeholder)
-   */
-  private async validateDeepSeekKey(apiKey: string): Promise<ApiKeyValidationResult> {
-    // TODO: Implementar validação da DeepSeek quando necessário
-    return { isValid: false, error: "DeepSeek validation not implemented yet" }
   }
 
   /**

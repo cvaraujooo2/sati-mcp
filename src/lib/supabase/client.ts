@@ -1,22 +1,21 @@
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { Database } from '@/types/database';
+import { createBrowserClient } from '@supabase/ssr'
+import { Database } from '@/types/database'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-// Singleton instance to avoid multiple GoTrueClient instances
-let supabaseInstance: ReturnType<typeof createSupabaseClient<Database>> | null = null;
+// Client-side Supabase client usando @supabase/ssr
+export function createClient() {
+  return createBrowserClient<Database>(supabaseUrl, supabaseKey)
+}
 
-// Client-side Supabase client (singleton)
+// Singleton para compatibilidade com código existente
+let supabaseInstance: ReturnType<typeof createClient> | null = null
+
 export const supabase = (() => {
   if (!supabaseInstance) {
-    supabaseInstance = createSupabaseClient<Database>(supabaseUrl, supabaseKey);
+    supabaseInstance = createClient()
   }
-  return supabaseInstance;
-})();
-
-// Helper function to create client (returns singleton instance)
-export function createClient() {
-  return supabase;
-}
+  return supabaseInstance
+})()
 

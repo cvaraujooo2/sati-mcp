@@ -1,110 +1,228 @@
 # 🔐 Decisões de Arquitetura: Sistema de Autenticação
 
-**Status**: PLANEJAMENTO  
-**Prioridade**: FUTURO (após testes com RLS desabilitado)  
-**Data**: 2025-10-09
+**Status**: ✅ DECIDIDO - Implementação em andamento  
+**Prioridade**: 🔥 ALTA - Sprint iniciado  
+**Data Atualização**: 2025-10-11  
+**Data Original**: 2025-10-09
 
 ---
 
-## 📋 Contexto
+## 🎯 PIVOT ESTRATÉGICO (11 de Outubro de 2025)
 
-Atualmente o sistema está usando:
-- `TEST_USER_ID` fixo: `00000000-0000-0000-0000-000000000001`
-- RLS desabilitado no Supabase (apenas para desenvolvimento)
-- Sem autenticação real implementada
+### Estratégia Anterior (DESCARTADA)
+- ❌ Foco em integração com ChatGPT/OpenAI Apps SDK
+- ❌ OAuth 2.1 completo para Apps SDK
+- ❌ Authorization server complexo
+- ❌ Compatibilidade com ChatGPT como prioridade
 
-Para produção, precisaremos implementar autenticação completa seguindo padrões do MCP/Apps SDK.
+### Nova Estratégia (ATUAL)
+1. ✅ **Fase Beta (PRIORIDADE)**: Web app Next.js + Supabase com autenticação tradicional
+2. ✅ **Fase Mobile (FUTURO)**: App Flutter com widgets nativos para neurodivergentes
+3. ✅ **Foco**: Usuários externos usando aplicação web completa
 
----
-
-## 🎯 Decisões Principais a Tomar
-
-### 1. Padrão de Autenticação
-
-#### Opção A: OAuth 2.1 Completo (Apps SDK)
-**Prós**:
-- Segue spec oficial do MCP/Apps SDK
-- Compatível com ChatGPT
-- Suporte a dynamic client registration
-- PKCE integrado
-
-**Contras**:
-- Complexidade alta
-- Requer authorization server (Auth0, Okta, custom)
-- Mais endpoints para implementar
-
-**Referência**: 
-- https://developers.openai.com/apps-sdk/build/auth
-- Requer: `/.well-known/oauth-protected-resource`, `/.well-known/openid-configuration`
-
-#### Opção B: Magic Link via Supabase
-**Prós**:
-- Simples de implementar
-- Supabase já tem suporte nativo
-- UX amigável (sem senha)
-- Menos código
-
-**Contras**:
-- Não segue spec MCP completa
-- Pode não funcionar com ChatGPT
-- Menos controle sobre fluxo
-
-#### Opção C: Email + Senha (Supabase Auth)
-**Prós**:
-- Tradicional e familiar
-- Supabase já implementa
-- Controle total
-
-**Contras**:
-- Requer gestão de senhas
-- Não é OAuth 2.1
-- Pode não integrar com ChatGPT
-
-**Decisão pendente**: Escolher baseado no caso de uso primário
+**Justificativa do Pivot**:
+- Flutter permite widgets nativos extremamente úteis para neurodivergentes (timers visuais, notificações adaptativas)
+- Web app como MVP/beta é mais rápido de lançar
+- ChatGPT integration pode ser fase 3 (depois de validar mercado)
 
 ---
 
-### 2. Escopo do MCP Server
+## 📋 Contexto Atual
 
-#### Opção A: Apenas ChatGPT
-**Foco**: Apps SDK oficial, OAuth 2.1, publicação no ChatGPT App Store
+### Implementação Temporária (A SER REMOVIDA)
+```typescript
+// src/app/api/chat/route.ts (linha 286)
+const isDev = process.env.NODE_ENV === 'development'
+if (isDev) {
+  userId = '84c419f8-bb51-4a51-bb0d-26a48453f495' // DEV BYPASS
+}
+```
 
-**Implica**:
-- Implementar authorization server completo
-- Endpoints OAuth obrigatórios
-- Token verification em cada tool
-- `securitySchemes` declarados nas tools
+### Estado do Banco
+- ✅ RLS criado mas DESABILITADO em desenvolvimento
+- ✅ Políticas RLS definidas (ver `supabase/security/enable-rls.sql`)
+- ⏳ Supabase Auth configurado mas não em uso
 
-#### Opção B: Apenas Web/Inspector Local
-**Foco**: Desenvolvimento local, MCP Inspector, testes rápidos
-
-**Implica**:
-- Auth mais simples (Supabase Auth)
-- Session cookies
-- Middleware Next.js para validação
-
-#### Opção C: Ambos (Híbrido)
-**Foco**: Máxima flexibilidade
-
-**Implica**:
-- MCP server aceita dois tipos de auth
-- JWT Bearer token (ChatGPT) OU
-- Session cookie (Web)
-- Mais complexidade, mas mais casos de uso
-
-**Decisão pendente**: Definir roadmap (começar web, depois ChatGPT?)
+### Próximos Passos
+Sprint de autenticação em andamento (2-3 dias) - ver `docs/core/SPRINT-AUTENTICACAO.md`
 
 ---
 
-### 3. Token Verification no MCP Server
+## ✅ DECISÕES FINAIS (11 de Outubro de 2025)
+
+### 1. Padrão de Autenticação: Supabase Auth + OAuth Google
+
+**DECISÃO**: ✅ Opção híbrida - Email/Password + Google OAuth (via Supabase Auth)
+
+**Justificativa**:
+- ✅ Supabase Auth é robusto e battle-tested
+- ✅ Google OAuth é familiar para usuários
+- ✅ Email/password como fallback
+- ✅ Magic link opcional para neurodivergentes (menos fricção)
+- ✅ Preparado para escalar (sessões via cookies)
+- ✅ Base sólida para app Flutter futuro
+
+**Implementação**:
+```typescript
+// Login via email/password
+await supabase.auth.signInWithPassword({ email, password })
+
+// Login via Google OAuth
+await supabase.auth.signInWithOAuth({ 
+  provider: 'google',
+  options: { redirectTo: '/auth/callback' }
+})
+
+// Magic link (opcional)
+await supabase.auth.signInWithOtp({ email })
+```
+
+**Opções DESCARTADAS**:
+- ❌ OAuth 2.1 Apps SDK: Complexidade desnecessária para web app
+- ❌ Authorization server custom: Over-engineering para MVP/beta
+
+---
+
+### 2. Escopo do Sistema: Web App Next.js (Beta) + Flutter (Futuro)
+
+**DECISÃO**: ✅ Fase 1: Web-only | Fase 2: Mobile Flutter
+
+**Justificativa**:
+- ✅ Web app é mais rápido para lançar beta
+- ✅ Validação de mercado antes de investir em mobile
+- ✅ Flutter permite widgets nativos poderosos (timers, notificações adaptativas)
+- ✅ Arquitetura preparada para ambos (API REST compartilhada)
+
+**Roadmap**:
+1. **Fase Beta (Atual)**: Web Next.js + Supabase Auth
+2. **Fase Mobile (Q1 2026)**: App Flutter + Deep links
+3. **Fase Enterprise (Q2 2026)**: ChatGPT integration (opcional)
+
+---
+
+### 3. Token Verification: Middleware Next.js + RLS Supabase
+
+**DECISÃO**: ✅ Middleware server-side + Row Level Security
+
+**Implementação**:
+```typescript
+// middleware.ts (raiz do projeto)
+export async function middleware(request: NextRequest) {
+  const supabase = createServerClient(...)
+  const { data: { user } } = await supabase.auth.getUser()
+  
+  if (!user && isPrivateRoute(pathname)) {
+    return NextResponse.redirect('/login')
+  }
+  
+  return response
+}
+```
+
+**Camadas de Segurança**:
+1. **Middleware**: Protege rotas Next.js (redirecionamento)
+2. **API Routes**: Valida `getAuthenticatedUser()` em cada endpoint
+3. **RLS**: Isola dados no Supabase (políticas SQL)
+
+**Opções DESCARTADAS**:
+- ❌ JWT Bearer token verification: Desnecessário para web app
+- ❌ Frontend-only validation: Inseguro
 
 #### Opção A: Validação JWT per-tool (Apps SDK)
 ```typescript
-// Em cada handler de tool
-async function handleCreateHyperfocus(args, token: string) {
-  const userId = await verifyJWT(token);
-  // usar userId real
-}
+---
+
+### 4. Segurança de Dados: Row Level Security (RLS)
+
+**DECISÃO**: ✅ RLS habilitado em TODAS as tabelas
+
+**Tabelas Protegidas**:
+- `hyperfocus` - ownership via `user_id`
+- `tasks` - ownership via `hyperfocus.user_id`
+- `focus_sessions` - ownership via `hyperfocus.user_id`
+- `alternancy_sessions` - ownership via `user_id`
+- `alternancy_hyperfocus` - ownership via `alternancy_sessions.user_id`
+- `user_api_keys` - ownership via `user_id`
+
+**Políticas Implementadas**:
+```sql
+-- Exemplo: hyperfocus
+CREATE POLICY "Users can view their own hyperfocus"
+  ON hyperfocus FOR SELECT
+  USING (auth.uid() = user_id);
+
+-- Exemplo: tasks (através de hyperfocus)
+CREATE POLICY "Users can view their own tasks"
+  ON tasks FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM hyperfocus
+      WHERE hyperfocus.id = tasks.hyperfocus_id
+      AND hyperfocus.user_id = auth.uid()
+    )
+  );
+```
+
+**Script Completo**: `supabase/security/enable-rls.sql`
+
+---
+
+## 🔧 Arquitetura Final
+
+### Fluxo de Autenticação
+
+```
+┌─────────────┐
+│   Usuário   │
+└──────┬──────┘
+       │
+       │ 1. Acessa /chat (sem auth)
+       ▼
+┌─────────────────┐
+│   Middleware    │ → Verifica sessão (cookies)
+│   (Next.js)     │ → Sessão inválida? Redirect /login
+└──────┬──────────┘
+       │
+       │ 2. Login via email/Google
+       ▼
+┌─────────────────┐
+│  Supabase Auth  │ → Cria sessão
+│                 │ → Seta cookies
+└──────┬──────────┘
+       │
+       │ 3. Redirect para /chat (com cookies)
+       ▼
+┌─────────────────┐
+│   Middleware    │ → Valida cookies ✅
+│   (Next.js)     │ → Permite acesso
+└──────┬──────────┘
+       │
+       │ 4. API request (criar hiperfoco)
+       ▼
+┌─────────────────┐
+│  API Route      │ → getAuthenticatedUser()
+│  /api/chat      │ → Extrai userId da sessão
+└──────┬──────────┘
+       │
+       │ 5. Query database
+       ▼
+┌─────────────────┐
+│  Supabase RLS   │ → Filtra por auth.uid()
+│  (PostgreSQL)   │ → Retorna apenas dados do usuário
+└─────────────────┘
+```
+
+### Camadas de Proteção
+
+| Camada | Tipo | Função | Bypass? |
+|--------|------|--------|---------|
+| 1. Middleware | Server-side | Protege rotas Next.js | ❌ Não |
+| 2. API Routes | Server-side | Valida usuário em cada request | ❌ Não |
+| 3. RLS Policies | Database | Isola dados no PostgreSQL | ⚠️ Service role only |
+
+**Nota**: Service role key bypassa RLS (usar apenas em migrations/admin)
+
+---
 ```
 
 **Prós**:

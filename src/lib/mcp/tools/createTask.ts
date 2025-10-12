@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/server';
 import { DatabaseError, NotFoundError, ValidationError } from '@/lib/utils/errors';
 import { toolLogger } from '@/lib/utils/logger';
 import { McpToolMetadata, AUTH_SCOPES } from '../types/metadata';
@@ -26,11 +26,68 @@ const createTaskSchema = z.object({
 
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 
+/**
+ * Valida se o título da tarefa é acionável (começa com verbo de ação)
+ */
+function validateActionableTitle(title: string): {
+  isActionable: boolean;
+  suggestion?: string;
+  detectedVerb?: string;
+} {
+  // Lista de verbos de ação comuns em português
+  const actionVerbs = [
+    'criar', 'instalar', 'configurar', 'implementar', 'escrever', 'desenvolver',
+    'testar', 'validar', 'verificar', 'revisar', 'estudar', 'aprender',
+    'praticar', 'ler', 'assistir', 'fazer', 'executar', 'completar',
+    'definir', 'planejar', 'organizar', 'estruturar', 'documentar',
+    'refatorar', 'otimizar', 'debugar', 'corrigir', 'atualizar',
+    'adicionar', 'remover', 'modificar', 'melhorar', 'analisar'
+  ];
+
+  const lowerTitle = title.toLowerCase().trim();
+  
+  // Verifica se começa com algum verbo de ação
+  const detectedVerb = actionVerbs.find(verb => lowerTitle.startsWith(verb));
+  
+  if (detectedVerb) {
+    return {
+      isActionable: true,
+      detectedVerb,
+    };
+  }
+
+  // Se não começou com verbo, sugerir alguns verbos relevantes
+  const suggestedVerbs = actionVerbs.slice(0, 5).join(', ');
+  
+  return {
+    isActionable: false,
+    suggestion: `Para melhor clareza, considere iniciar com um verbo de ação como: ${suggestedVerbs}. Exemplo: "Criar ${title.slice(0, 50)}"`,
+  };
+}
+
 export async function createTaskHandler(input: CreateTaskInput, userId: string) {
   log.info({ userId, input }, 'Criando nova tarefa');
 
   try {
     const validated = createTaskSchema.parse(input);
+
+    // Obter cliente Supabase com sessão do servidor
+    const supabase = await createClient();
+
+    // Validar se o título é acionável e gerar sugestão se não for
+    const titleValidation = validateActionableTitle(validated.title);
+    
+    if (!titleValidation.isActionable) {
+      log.warn(
+        { title: validated.title, suggestion: titleValidation.suggestion },
+        'Título da tarefa não é acionável'
+      );
+    } else {
+      log.info(
+        { title: validated.title, verb: titleValidation.detectedVerb },
+        'Título acionável detectado'
+      );
+    }
 
     const { data: hyperfocus, error: hyperfocusError } = await supabase
       .from('hyperfocus')
@@ -112,6 +169,12 @@ export async function createTaskHandler(input: CreateTaskInput, userId: string) 
           estimatedMinutes: task.estimated_minutes ?? undefined,
           description: task.description ?? undefined,
         },
+        // Incluir feedback sobre qualidade do título
+        titleQuality: {
+          isActionable: titleValidation.isActionable,
+          detectedVerb: titleValidation.detectedVerb,
+          suggestion: titleValidation.suggestion,
+        },
       },
       component: {
         type: 'inline',
@@ -135,18 +198,33 @@ export async function createTaskHandler(input: CreateTaskInput, userId: string) 
 
 export const createTaskMetadata: McpToolMetadata = {
   name: 'createTask',
-  description: `Creates a new task within an existing hyperfocus.
+  description: `Creates a new task within a hyperfocus area.
+
+IMPORTANT - ACTIONABLE TASKS:
+This tool is designed to help neurodivergent users create CLEAR and ACTIONABLE tasks.
+
+RULES FOR EFFECTIVE TASKS:
+1. ✅ Start with ACTION VERBS: "Instalar", "Criar", "Escrever", "Testar", "Configurar"
+2. ✅ Be SPECIFIC: "Configurar PostgreSQL localmente" not just "Banco de dados"
+3. ✅ Include HOW in description: Detail the steps or method
+4. ✅ Realistic time estimates: 15-60 minutes for most tasks
 
 Use this tool when:
-- User wants to add a specific task to a project
+- User wants to add a specific task to a hyperfocus
+- User needs to create a single task (not breaking down a complex one - use breakIntoSubtasks for that)
 - User mentions a concrete action they need to take
-- User is breaking down a hyperfocus into actionable steps
-- User says "add task" or "I need to do X in this project"
 
-Examples:
-- "Add task 'Study TypeScript interfaces' to my React hyperfocus"
-- "I need to do code review in my project"
-- "Add: Research best practices for state management"`,
+Perfect for neurodivergent users who need clear, unambiguous task definitions.
+
+Examples of GOOD tasks:
+- Title: "Instalar Django via pip" | Description: "Execute 'pip install django' no terminal"
+- Title: "Criar arquivo models.py" | Description: "Criar novo arquivo na pasta app/ com estrutura básica de modelo"
+- Title: "Escrever função de autenticação" | Description: "Implementar função login() que valida credenciais via JWT"
+
+Examples of BAD tasks (avoid):
+- ❌ "Django" (not actionable)
+- ❌ "Models" (too vague)
+- ❌ "Autenticação" (what about it?)`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -156,18 +234,50 @@ Examples:
       },
       title: {
         type: 'string',
-        description: 'Title of the task (1-200 characters)',
+        description: `Title of the task (1-200 characters).
+        
+CRITICAL: Use ACTION VERBS at the start for clarity!
+
+✅ GOOD EXAMPLES:
+- "Instalar Django via pip"
+- "Criar arquivo models.py"  
+- "Escrever testes unitários"
+- "Configurar banco PostgreSQL"
+- "Estudar capítulo 3 do livro"
+
+❌ BAD EXAMPLES (avoid):
+- "Django instalado" (passive voice)
+- "Models" (not actionable)
+- "Autenticação" (too vague)
+- "Banco de dados" (what action?)
+
+For neurodivergent users, actionable language reduces executive dysfunction and makes it clear what to do next.`,
         minLength: 1,
         maxLength: 200,
       },
       description: {
         type: 'string',
-        description: 'Optional description of the task',
+        description: `Optional detailed description of HOW to complete the task.
+
+Best practice: Explain the METHOD or STEPS needed.
+
+Examples:
+- "Execute 'pip install django' no ambiente virtual"
+- "Criar users/models.py com classe User extendendo AbstractUser"
+- "Implementar função em auth.py que valida JWT tokens"`,
         maxLength: 500,
       },
       estimatedMinutes: {
         type: 'number',
-        description: 'Estimated time in minutes (1-480)',
+        description: `Estimated time in minutes (1-480).
+
+Guidelines for neurodivergent users:
+- Simple tasks: 15-30 minutes
+- Moderate tasks: 30-60 minutes
+- Complex tasks: 60-120 minutes
+- If >120 minutes, consider breaking into subtasks
+
+Remember: Real time often takes 1.5x-2x your estimate (time blindness).`,
         minimum: 1,
         maximum: 480,
       },

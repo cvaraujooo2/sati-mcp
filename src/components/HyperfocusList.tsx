@@ -23,6 +23,7 @@ interface Hyperfocus {
 interface HyperfocusListOutput {
   hyperfocuses: Hyperfocus[];
   total: number;
+  showArchived?: boolean;
 }
 
 const colorClasses = {
@@ -47,14 +48,24 @@ const colorEmojis = {
   gray: '⚪',
 } as const;
 
-export function HyperfocusList() {
+export function HyperfocusList(props?: HyperfocusListOutput) {
+  // Tentar obter dados de props primeiro, depois de toolOutput
   const toolOutput = useToolOutput<HyperfocusListOutput>();
   const theme = useTheme();
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
-  const hyperfocuses = toolOutput?.hyperfocuses ?? [];
-  const total = toolOutput?.total ?? 0;
+  // Usar props se fornecido, senão toolOutput
+  const data = props || toolOutput;
+  const hyperfocuses = data?.hyperfocuses ?? [];
+  const total = data?.total ?? hyperfocuses.length;
+
+  // Debug logs
+  console.log('[HyperfocusList] Props:', props);
+  console.log('[HyperfocusList] ToolOutput:', toolOutput);
+  console.log('[HyperfocusList] Data:', data);
+  console.log('[HyperfocusList] Hyperfocuses:', hyperfocuses);
+  console.log('[HyperfocusList] Total:', total);
 
   const toggleExpanded = useCallback((id: string) => {
     setExpandedIds((prev) => {
@@ -158,9 +169,11 @@ export function HyperfocusList() {
       <div className="space-y-3 mb-4">
         {hyperfocuses.map((hyperfocus) => {
           const isExpanded = expandedIds.has(hyperfocus.id);
+          const taskCount = hyperfocus.taskCount || 0;
+          const completedCount = hyperfocus.completedCount || 0;
           const progressPercent =
-            hyperfocus.taskCount > 0
-              ? Math.round((hyperfocus.completedCount / hyperfocus.taskCount) * 100)
+            taskCount > 0
+              ? Math.round((completedCount / taskCount) * 100)
               : 0;
 
           return (
@@ -169,61 +182,83 @@ export function HyperfocusList() {
               className={`${cardBg} border ${borderColor} rounded-lg overflow-hidden`}
             >
               {/* Header do hiperfoco */}
-              <button
-                onClick={() => toggleExpanded(hyperfocus.id)}
-                className={`w-full flex items-start gap-3 p-4 ${hoverBg} transition-colors text-left`}
-              >
-                <div className="flex-shrink-0 mt-1">
-                  {isExpanded ? (
-                    <ChevronDown size={20} className={mutedColor} />
-                  ) : (
-                    <ChevronRight size={20} className={mutedColor} />
-                  )}
-                </div>
-
-                <div
-                  className={`w-3 h-3 rounded-full ${colorClasses[hyperfocus.color as keyof typeof colorClasses] || colorClasses.blue} flex-shrink-0 mt-1.5`}
-                />
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h4 className={`font-semibold ${textColor}`}>{hyperfocus.title}</h4>
-                    <span className="text-xl">
-                      {colorEmojis[hyperfocus.color as keyof typeof colorEmojis] || '🔵'}
-                    </span>
-                  </div>
-
-                  {hyperfocus.description && (
-                    <p className={`text-sm ${mutedColor} mb-2`}>{hyperfocus.description}</p>
-                  )}
-
-                  {/* Metadados */}
-                  <div className={`flex items-center gap-4 text-sm ${mutedColor}`}>
-                    <span className="flex items-center gap-1">
-                      <CheckCircle size={16} />
-                      {hyperfocus.completedCount}/{hyperfocus.taskCount} tarefas
-                    </span>
-                    {hyperfocus.estimatedTimeMinutes && (
-                      <span className="flex items-center gap-1">
-                        <Clock size={16} />
-                        {hyperfocus.estimatedTimeMinutes} min
-                      </span>
+              <div className="p-4">
+                <button
+                  onClick={() => toggleExpanded(hyperfocus.id)}
+                  className={`w-full flex items-start gap-3 ${hoverBg} transition-colors text-left rounded-lg p-2 -m-2`}
+                >
+                  <div className="flex-shrink-0 mt-1">
+                    {isExpanded ? (
+                      <ChevronDown size={20} className={mutedColor} />
+                    ) : (
+                      <ChevronRight size={20} className={mutedColor} />
                     )}
                   </div>
 
-                  {/* Barra de progresso */}
-                  {hyperfocus.taskCount > 0 && (
-                    <div className="mt-3">
-                      <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-blue-500 transition-all duration-300"
-                          style={{ width: `${progressPercent}%` }}
-                        />
-                      </div>
+                  <div
+                    className={`w-3 h-3 rounded-full ${colorClasses[hyperfocus.color as keyof typeof colorClasses] || colorClasses.blue} flex-shrink-0 mt-1.5`}
+                  />
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className={`font-semibold ${textColor}`}>{hyperfocus.title}</h4>
+                      <span className="text-xl">
+                        {colorEmojis[hyperfocus.color as keyof typeof colorEmojis] || '🔵'}
+                      </span>
                     </div>
-                  )}
-                </div>
-              </button>
+
+                    {hyperfocus.description && (
+                      <p className={`text-sm ${mutedColor} mb-2`}>{hyperfocus.description}</p>
+                    )}
+
+                    {/* Metadados */}
+                    <div className={`flex items-center gap-4 text-sm ${mutedColor}`}>
+                      <span className="flex items-center gap-1">
+                        <CheckCircle size={16} />
+                        {completedCount}/{taskCount} tarefas
+                      </span>
+                      {hyperfocus.estimatedTimeMinutes && (
+                        <span className="flex items-center gap-1">
+                          <Clock size={16} />
+                          {hyperfocus.estimatedTimeMinutes} min
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Barra de progresso */}
+                    {taskCount > 0 && (
+                      <div className="mt-3">
+                        <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-blue-500 transition-all duration-300"
+                            style={{ width: `${progressPercent}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </button>
+
+                {/* Botões sempre visíveis (quando contraído) */}
+                {!isExpanded && (
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => handleStartFocus(hyperfocus)}
+                      className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Clock size={16} />
+                      Iniciar Foco
+                    </button>
+                    <button
+                      onClick={() => handleCreateTask(hyperfocus.id)}
+                      className={`flex-1 px-3 py-2 ${theme === 'dark' ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'} ${textColor} rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2`}
+                    >
+                      <Plus size={16} />
+                      Criar Tarefas
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {/* Lista de tarefas expandida */}
               {isExpanded && hyperfocus.tasks && hyperfocus.tasks.length > 0 && (

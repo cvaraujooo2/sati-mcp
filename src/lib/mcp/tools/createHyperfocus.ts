@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/server';
 import { ValidationError, DatabaseError } from '@/lib/utils/errors';
 import { toolLogger } from '@/lib/utils/logger';
 import { McpToolMetadata, AUTH_SCOPES } from '../types/metadata';
@@ -37,7 +37,10 @@ export async function createHyperfocusHandler(
     // 1. Validar input
     const validated = createHyperfocusSchema.parse(input);
     
-    // 2. Inserir no banco
+    // 2. Obter cliente Supabase com sessão do servidor
+    const supabase = await createClient();
+    
+    // 3. Inserir no banco
     const { data: hyperfocus, error } = await supabase
       .from('hyperfocus')
       .insert({

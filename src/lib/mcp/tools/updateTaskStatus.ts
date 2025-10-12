@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/server';
 import { DatabaseError, NotFoundError, ValidationError } from '@/lib/utils/errors';
 import { toolLogger } from '@/lib/utils/logger';
 import { McpToolMetadata, AUTH_SCOPES } from '../types/metadata';
@@ -21,6 +21,8 @@ export async function updateTaskStatusHandler(
   log.info({ userId, input }, 'Atualizando status da tarefa');
 
   try {
+    const supabase = await createClient();
+
     const parsed = updateTaskStatusSchema.parse(input);
 
     const { data: hyperfocus, error: hyperfocusError } = await supabase
@@ -88,6 +90,35 @@ export async function updateTaskStatusHandler(
       completed: Boolean(item.completed),
     })) ?? [];
 
+    // Calcular progresso e próxima tarefa
+    const completedCount = orderedTasks.filter(t => t.completed).length;
+    const totalCount = orderedTasks.length;
+    const progressPercentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+    
+    const nextIncompleteTask = orderedTasks.find(t => !t.completed && t.id !== parsed.taskId);
+
+    // Mensagens de celebração variadas
+    const celebrationMessages = [
+      '🎉 Incrível! Você completou esta tarefa!',
+      '✨ Parabéns! Mais uma conquista desbloqueada!',
+      '🚀 Excelente trabalho! Continue assim!',
+      '⭐ Você está arrasando! Tarefa concluída!',
+      '💪 Muito bem! Progresso real acontecendo!',
+      '🌟 Fantástico! Você está fazendo acontecer!',
+    ];
+
+    const encouragements = [
+      'Cada pequeno passo importa. Você está progredindo!',
+      'Seu esforço está transformando objetivos em realidade.',
+      'Pequenos progressos levam a grandes conquistas.',
+      'Você provou que pode fazer isso. Continue confiando em si!',
+      'O difícil é começar. Você já está no caminho!',
+      'Seus esforços de hoje constroem o amanhã que você quer.',
+    ];
+
+    const randomCelebration = celebrationMessages[Math.floor(Math.random() * celebrationMessages.length)];
+    const randomEncouragement = encouragements[Math.floor(Math.random() * encouragements.length)];
+
     log.info({ taskId: parsed.taskId, completed: parsed.completed }, 'Status da tarefa atualizado com sucesso');
 
     return {
@@ -98,6 +129,32 @@ export async function updateTaskStatusHandler(
           title: task.title,
           completed: parsed.completed,
         },
+        // Feedback motivacional quando tarefa é completada
+        celebration: parsed.completed ? {
+          message: randomCelebration,
+          encouragement: randomEncouragement,
+          progress: {
+            completed: completedCount,
+            total: totalCount,
+            percentage: progressPercentage,
+            remaining: totalCount - completedCount,
+          },
+          nextTask: nextIncompleteTask ? {
+            id: nextIncompleteTask.id,
+            title: nextIncompleteTask.title,
+            suggestion: 'Quer continuar com a próxima tarefa? Você está no ritmo!',
+          } : {
+            id: null,
+            title: null,
+            suggestion: progressPercentage === 100 
+              ? '🎊 Parabéns! Você completou TODAS as tarefas deste hiperfoco! É hora de celebrar!' 
+              : 'Ótimo progresso! Considere adicionar mais tarefas ou fazer uma pausa bem merecida.',
+          },
+          milestone: progressPercentage === 25 ? '🏆 25% concluído!' :
+                     progressPercentage === 50 ? '🏆 Metade do caminho!' :
+                     progressPercentage === 75 ? '🏆 75% - Quase lá!' :
+                     progressPercentage === 100 ? '🏆 100% COMPLETO!' : null,
+        } : null,
       },
       component: {
         type: 'inline',

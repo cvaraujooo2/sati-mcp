@@ -39,8 +39,8 @@ export class OptimizedToolExecutor {
   private static readonly CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutos
   private static readonly MAX_CACHE_SIZE = 1000
 
-  constructor(supabaseClient?: SupabaseClient) {
-    this.supabase = supabaseClient || createClient()
+  constructor(supabaseClient: SupabaseClient) {
+    this.supabase = supabaseClient
     
     // Cleanup cache periodicamente
     setInterval(() => this.cleanupExpiredCache(), 60000) // 1 minuto

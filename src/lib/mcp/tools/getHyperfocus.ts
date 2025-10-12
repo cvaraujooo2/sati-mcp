@@ -4,8 +4,8 @@
  */
 
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase/client';
-import { DatabaseError, NotFoundError, ValidationError } from '@/lib/utils/errors';
+import { createClient } from '@/lib/supabase/server';
+import { DatabaseError, ValidationError, NotFoundError } from '@/lib/utils/errors';
 import { toolLogger } from '@/lib/utils/logger';
 import { McpToolMetadata, AUTH_SCOPES } from '../types/metadata';
 
@@ -24,6 +24,9 @@ export async function getHyperfocusHandler(input: GetHyperfocusInput, userId: st
 
   try {
     const validated = getHyperfocusSchema.parse(input);
+
+    // Obter cliente Supabase com sessão do servidor
+    const supabase = await createClient();
 
     // Buscar hiperfoco
     const { data: hyperfocus, error: hyperfocusError } = await supabase

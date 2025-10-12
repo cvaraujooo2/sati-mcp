@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/server';
 import { ValidationError, DatabaseError, NotFoundError } from '@/lib/utils/errors';
 import { toolLogger } from '@/lib/utils/logger';
 import { McpToolMetadata, AUTH_SCOPES } from '../types/metadata';
@@ -37,6 +37,8 @@ export async function updateHyperfocusHandler(
   log.info({ userId, input }, 'Updating hyperfocus');
   
   try {
+    const supabase = await createClient();
+
     // 1. Validar input
     const validated = updateHyperfocusSchema.parse(input);
     

@@ -3,30 +3,7 @@
  * Performance otimizada + Pretty print em dev
 */
 
-import { createRequire } from 'module';
 import pino from 'pino';
-
-// =========================================================================
-// BUNDLER OVERRIDES (Thread-stream worker path)
-// =========================================================================
-
-const require = createRequire(import.meta.url);
-
-type GlobalWithPinoOverrides = typeof globalThis & {
-  __bundlerPathsOverrides?: Record<string, string>;
-};
-
-const globalWithOverrides = globalThis as GlobalWithPinoOverrides;
-
-if (!globalWithOverrides.__bundlerPathsOverrides) {
-  globalWithOverrides.__bundlerPathsOverrides = {};
-}
-
-if (!globalWithOverrides.__bundlerPathsOverrides['thread-stream-worker']) {
-  globalWithOverrides.__bundlerPathsOverrides['thread-stream-worker'] = require.resolve(
-    'thread-stream/lib/worker.js'
-  );
-}
 
 // ============================================================================
 // LOGGER CONFIGURATION
@@ -35,8 +12,15 @@ if (!globalWithOverrides.__bundlerPathsOverrides['thread-stream-worker']) {
 const isDevelopment = process.env.NODE_ENV === 'development';
 const logLevel = (process.env.LOG_LEVEL as pino.Level) || 'info';
 
+// Detecta se está rodando em ambiente de bundler (Next.js API routes)
+const isBundlerEnvironment = typeof window === 'undefined' && 
+  (process.env.NEXT_RUNTIME === 'nodejs' || typeof process.versions?.node !== 'undefined');
+
 /**
  * Logger principal do sistema
+ * 
+ * Nota: pino-pretty transport é desabilitado em ambientes bundled (Next.js API routes)
+ * devido a incompatibilidades com webpack/thread-stream workers
  */
 export const logger = pino({
   level: logLevel,
@@ -50,23 +34,9 @@ export const logger = pino({
       return { level: label };
     },
   },
-  // Pretty print apenas em desenvolvimento
-  ...(isDevelopment && {
-    transport: {
-      target: 'pino-pretty',
-      options: {
-        colorize: true,
-        translateTime: 'SYS:standard',
-        ignore: 'pid,hostname',
-        singleLine: false,
-        messageFormat: '{levelLabel} - {msg}',
-      },
-    },
-  }),
-  // Em produção, log estruturado para parsing
-  ...(!isDevelopment && {
-    serializers: pino.stdSerializers,
-  }),
+  serializers: pino.stdSerializers,
+  // Desabilita transport em ambientes bundled para evitar ERR_WORKER_PATH
+  // Em desenvolvimento local (não-API routes), usa formato básico
 });
 
 // ============================================================================
