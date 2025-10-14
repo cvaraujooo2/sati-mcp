@@ -56,23 +56,47 @@ export type Database = {
       alternancy_sessions: {
         Row: {
           active: boolean | null
+          actual_duration_minutes: number | null
+          completed_at: string | null
           created_at: string
+          current_index: number | null
+          feedback: string | null
+          hyperfocus_sequence: Json
           id: string
           name: string | null
+          started_at: string | null
+          status: string | null
+          transition_break_minutes: number | null
           user_id: string
         }
         Insert: {
           active?: boolean | null
+          actual_duration_minutes?: number | null
+          completed_at?: string | null
           created_at?: string
+          current_index?: number | null
+          feedback?: string | null
+          hyperfocus_sequence?: Json
           id?: string
           name?: string | null
+          started_at?: string | null
+          status?: string | null
+          transition_break_minutes?: number | null
           user_id: string
         }
         Update: {
           active?: boolean | null
+          actual_duration_minutes?: number | null
+          completed_at?: string | null
           created_at?: string
+          current_index?: number | null
+          feedback?: string | null
+          hyperfocus_sequence?: Json
           id?: string
           name?: string | null
+          started_at?: string | null
+          status?: string | null
+          transition_break_minutes?: number | null
           user_id?: string
         }
         Relationships: []
@@ -84,6 +108,7 @@ export type Database = {
           hyperfocus_id: string
           id: string
           interrupted: boolean | null
+          notes: string | null
           planned_duration_minutes: number
           started_at: string
         }
@@ -93,6 +118,7 @@ export type Database = {
           hyperfocus_id: string
           id?: string
           interrupted?: boolean | null
+          notes?: string | null
           planned_duration_minutes: number
           started_at?: string
         }
@@ -102,6 +128,7 @@ export type Database = {
           hyperfocus_id?: string
           id?: string
           interrupted?: boolean | null
+          notes?: string | null
           planned_duration_minutes?: number
           started_at?: string
         }

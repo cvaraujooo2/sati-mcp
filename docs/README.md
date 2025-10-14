@@ -19,6 +19,22 @@ Sati é um **MCP (Model Context Protocol) app** que vive dentro do ChatGPT e aju
 
 ## 📚 Documentação
 
+### 🆕 **NOVO: Guias de Integração Componentes + Supabase**
+
+**Para desenvolvedores implementando hooks e persistência direta:**
+
+| Documento | Tipo | Tempo | Descrição |
+|-----------|------|-------|-----------|
+| [**📖 Índice Mestre**](./INTEGRACAO-COMPONENTES-SUPABASE-INDEX.md) | 🎯 START HERE | 10 min | Visão geral e links para todos os guias |
+| [**📘 Guia Completo**](./GUIA-IMPLEMENTACAO-INTEGRACAO-COMPONENTES.md) | Tutorial | 30-40 min | Implementação passo a passo com código completo |
+| [**✅ Checklist Rápida**](./CHECKLIST-IMPLEMENTACAO-RAPIDA.md) | Referência | Durante dev | Templates prontos e validações |
+| [**📊 Diagramas**](./DIAGRAMAS-FLUXOS.md) | Visual | 15 min | Arquitetura e fluxos ilustrados |
+| [**🔧 Troubleshooting**](./TROUBLESHOOTING.md) | Suporte | Quando necessário | Soluções para problemas comuns |
+
+**💡 Dica:** Se você é júnior, comece pelo Índice Mestre. Se é pleno/sênior, vá direto para a Checklist.
+
+---
+
 ### 📄 Documentos Principais
 
 | Documento | Descrição | Páginas |

@@ -194,20 +194,28 @@ export async function breakIntoSubtasksHandler(
       },
       component: validated.autoCreate
         ? {
-          type: 'inline',
+          type: 'expanded',
           name: 'TaskBreakdown',
           props: {
             hyperfocusId: validated.hyperfocusId,
             hyperfocusTitle: hyperfocus.title,
-            tasks: allTasks,
+            tasks: allTasks.map(t => ({
+              id: t.id,
+              title: t.title,
+              completed: t.completed,
+            })),
           },
         }
         : {
-          type: 'inline',
+          type: 'expanded',
           name: 'SubtaskSuggestions',
           props: {
             hyperfocusId: validated.hyperfocusId,
-            suggestions,
+            hyperfocusTitle: hyperfocus.title,
+            description: validated.taskDescription,
+            suggestedTasks: suggestions,
+            complexity: analyzeComplexity(validated.taskDescription),
+            totalEstimatedMinutes: suggestions.reduce((sum, s) => sum + s.estimatedMinutes, 0),
           },
         },
     };

@@ -516,6 +516,105 @@ export async function listFocusSessions(
   }
 }
 
+/**
+ * Filtros para sessões
+ */
+export interface SessionFilters {
+  period?: 'today' | 'week' | 'month' | 'all';
+  status?: 'completed' | 'interrupted' | 'all';
+  sortBy?: 'recent' | 'oldest' | 'duration';
+  limit?: number;
+}
+
+/**
+ * Tipo estendido com dados do hiperfoco
+ */
+export type FocusSessionWithHyperfocus = FocusSession & {
+  hyperfocus: {
+    id: string;
+    title: string;
+    color: string;
+    user_id: string;
+  };
+};
+
+/**
+ * Lista todas as sessões de foco de um usuário
+ */
+export async function listAllUserSessions(
+  client: SupabaseClient<Database>,
+  userId: string,
+  filters: SessionFilters = {}
+): Promise<FocusSessionWithHyperfocus[]> {
+  const timer = new PerformanceTimer();
+
+  try {
+    let query = client
+      .from('focus_sessions')
+      .select(`
+        *,
+        hyperfocus!inner(
+          id,
+          title,
+          color,
+          user_id
+        )
+      `)
+      .eq('hyperfocus.user_id', userId);
+
+    // Filtro de período
+    if (filters.period && filters.period !== 'all') {
+      const now = new Date();
+      let startDate: Date;
+
+      switch (filters.period) {
+        case 'today':
+          startDate = new Date(now.setHours(0, 0, 0, 0));
+          break;
+        case 'week':
+          startDate = new Date(now.setDate(now.getDate() - 7));
+          break;
+        case 'month':
+          startDate = new Date(now.setDate(now.getDate() - 30));
+          break;
+        default:
+          startDate = new Date(0);
+      }
+
+      query = query.gte('started_at', startDate.toISOString());
+    }
+
+    // Filtro de status
+    if (filters.status && filters.status !== 'all') {
+      if (filters.status === 'completed') {
+        query = query.not('ended_at', 'is', null).eq('interrupted', false);
+      } else if (filters.status === 'interrupted') {
+        query = query.eq('interrupted', true);
+      }
+    }
+
+    // Ordenação
+    const sortOrder = filters.sortBy === 'oldest' ? 'asc' : 'desc';
+    const sortColumn = filters.sortBy === 'duration' ? 'actual_duration_minutes' : 'started_at';
+    query = query.order(sortColumn, { ascending: sortOrder === 'asc' });
+
+    // Limite
+    if (filters.limit) {
+      query = query.limit(filters.limit);
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+
+    logDbQuery('SELECT', 'focus_sessions', timer.duration(), data?.length);
+    return (data || []) as FocusSessionWithHyperfocus[];
+  } catch (error) {
+    logDbError('SELECT', 'focus_sessions', error as Error);
+    throw new DatabaseError('Erro ao listar sessões do usuário', { originalError: error });
+  }
+}
+
 // ============================================================================
 // ALTERNANCY QUERIES
 // ============================================================================

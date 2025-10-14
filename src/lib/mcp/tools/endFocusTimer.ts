@@ -100,6 +100,78 @@ export async function endFocusTimerHandler(input: EndFocusTimerInput, userId: st
     );
     const wasSuccessful = !validated.interrupted && completionRate >= 80;
 
+    // === ENRIQUECIMENTO: Buscar tarefas do hiperfoco ===
+    const { data: allTasks } = await supabase
+      .from('tasks')
+      .select('id, title, completed')
+      .eq('hyperfocus_id', session.hyperfocus_id);
+
+    const totalTasks = allTasks?.length || 0;
+    const completedTasks = allTasks?.filter(t => t.completed) || [];
+    const tasksCompleted = completedTasks.length;
+
+    // === ENRIQUECIMENTO: Calcular streak (sessões consecutivas) ===
+    const { data: recentSessions } = await supabase
+      .from('focus_sessions')
+      .select('ended_at')
+      .eq('hyperfocus_id', session.hyperfocus_id)
+      .not('ended_at', 'is', null)
+      .order('ended_at', { ascending: false })
+      .limit(10);
+
+    let streak = 0;
+    if (recentSessions) {
+      const today = new Date().toISOString().split('T')[0];
+      let currentDate = today;
+      
+      for (const s of recentSessions) {
+        if (!s.ended_at) continue; // Skip null dates
+        const sessionDate = new Date(s.ended_at).toISOString().split('T')[0];
+        if (sessionDate === currentDate) {
+          streak++;
+          // Retroceder um dia
+          const date = new Date(currentDate);
+          date.setDate(date.getDate() - 1);
+          currentDate = date.toISOString().split('T')[0];
+        } else {
+          break;
+        }
+      }
+    }
+
+    // === ENRIQUECIMENTO: Calcular tempo total de foco hoje ===
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const { data: todaySessions } = await supabase
+      .from('focus_sessions')
+      .select('actual_duration_minutes')
+      .gte('ended_at', todayStart.toISOString())
+      .not('ended_at', 'is', null);
+
+    const totalFocusTimeToday = (todaySessions || []).reduce(
+      (sum, s) => sum + (s.actual_duration_minutes || 0),
+      0
+    );
+
+    // === ENRIQUECIMENTO: Gerar feedback baseado em desempenho ===
+    const efficiency = Math.round(
+      (actualDuration / session.planned_duration_minutes) * 100
+    );
+
+    let feedback = '';
+    if (efficiency >= 95 && tasksCompleted >= totalTasks * 0.8) {
+      feedback = '🌟 Sessão excepcional! Você manteve foco e completou a maioria das tarefas.';
+    } else if (efficiency >= 80) {
+      feedback = '✨ Ótima sessão! Continue assim.';
+    } else if (efficiency >= 60) {
+      feedback = '👍 Boa sessão! Há espaço para melhorar o tempo de foco.';
+    } else if (validated.interrupted) {
+      feedback = '😊 Tudo bem! Até sessões interrompidas são progresso. Continue tentando!';
+    } else {
+      feedback = '💪 Sessão desafiadora. Tente quebrar em sessões menores na próxima vez.';
+    }
+
     // Buscar todas as sessões do hiperfoco para estatísticas
     const { data: allSessions } = await supabase
       .from('focus_sessions')
@@ -118,6 +190,8 @@ export async function endFocusTimerHandler(input: EndFocusTimerInput, userId: st
         actualDuration,
         interrupted: validated.interrupted,
         completionRate,
+        tasksCompleted,
+        streak,
       },
       'Timer de foco finalizado com sucesso'
     );
@@ -136,6 +210,11 @@ export async function endFocusTimerHandler(input: EndFocusTimerInput, userId: st
           interrupted: validated.interrupted,
           completionRate,
           successful: wasSuccessful,
+          tasksCompleted,
+          totalTasks,
+          streak,
+          totalFocusTimeToday,
+          feedback,
         },
         statistics: {
           totalSessions,
@@ -149,24 +228,30 @@ export async function endFocusTimerHandler(input: EndFocusTimerInput, userId: st
           : '👍 Boa tentativa! Considere ajustar a duração do timer na próxima vez.',
       },
       component: {
-        type: 'inline',
+        type: 'expanded',
         name: 'FocusSessionSummary',
         props: {
-          session: {
-            hyperfocusTitle: hyperfocus.title,
-            plannedMinutes: session.planned_duration_minutes,
-            actualMinutes: actualDuration,
-            interrupted: validated.interrupted,
-            completionRate,
-            successful: wasSuccessful,
-          },
-          statistics: {
-            totalSessions,
-            completedSessions,
-            totalMinutes,
-          },
+          sessionId: validated.sessionId,
+          hyperfocusId: session.hyperfocus_id,
+          hyperfocusTitle: hyperfocus.title,
+          startedAt: session.started_at,
+          endedAt: new Date().toISOString(),
+          plannedDurationMinutes: session.planned_duration_minutes,
+          actualDurationMinutes: actualDuration,
+          interrupted: validated.interrupted,
+          tasksCompleted,
+          totalTasks,
+          completedTasks: completedTasks.map(t => ({
+            id: t.id,
+            title: t.title,
+            completed: t.completed,
+          })),
+          feedback,
+          streak,
+          totalFocusTimeToday,
         },
       },
+      textContent: `✅ Sessão finalizada: ${actualDuration}min de foco. ${tasksCompleted}/${totalTasks} tarefas completas. ${feedback}`,
     };
   } catch (error) {
     if (error instanceof z.ZodError) {

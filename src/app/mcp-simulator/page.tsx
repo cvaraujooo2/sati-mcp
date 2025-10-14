@@ -1,18 +1,18 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { ChatInterface } from "@/components/chat/ChatInterface";
+import { ChatInterface } from "@/app/components/chat/ChatInterface";
 import { ChatMessage } from "@/lib/chat/types";
 
 // Importar componentes SATI
-import { HyperfocusCard } from "@/components/HyperfocusCard";
-import { HyperfocusList } from "@/components/HyperfocusList";
-import { TaskBreakdown } from "@/components/TaskBreakdown";
-import { FocusTimer } from "@/components/FocusTimer";
-import { SubtaskSuggestions } from "@/components/SubtaskSuggestions";
-import { ContextAnalysis } from "@/components/ContextAnalysis";
-import { AlternancyFlow } from "@/components/AlternancyFlow";
-import { FocusSessionSummary } from "@/components/FocusSessionSummary";
+import { HyperfocusCard } from "@/app/components/HyperfocusCard";
+import { HyperfocusList } from "@/app/components/HyperfocusList";
+import { TaskBreakdown } from "@/app/components/TaskBreakdown";
+import { FocusTimer } from "@/app/components/FocusTimer";
+import { SubtaskSuggestions } from "@/app/components/SubtaskSuggestions";
+import { ContextAnalysis } from "@/app/components/ContextAnalysis";
+import { AlternancyFlow } from "@/app/components/AlternancyFlow";
+import { FocusSessionSummary } from "@/app/components/FocusSessionSummary";
 
 // Definir tipos
 interface ToolDemoConfig {

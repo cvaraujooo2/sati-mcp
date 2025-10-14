@@ -89,12 +89,16 @@ export async function analyzeContextHandler(input: AnalyzeContextInput, userId: 
         userInput: validated.userInput,
       },
       component: {
-        type: 'inline',
+        type: 'expanded',
         name: 'ContextAnalysis',
         props: {
-          hyperfocusTitle: hyperfocus.title,
+          contextDescription: validated.userInput,
           analysisType: validated.analysisType,
-          analysis,
+          result: analysis,
+          insights: [
+            `Análise de ${validated.analysisType} concluída para ${hyperfocus.title}`,
+            `Baseado em: ${validated.userInput.substring(0, 100)}${validated.userInput.length > 100 ? '...' : ''}`
+          ],
         },
       },
     };

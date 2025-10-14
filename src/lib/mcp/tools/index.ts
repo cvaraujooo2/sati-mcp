@@ -24,6 +24,8 @@ export * from './analyzeContext';
 
 // Alternancy
 export * from './createAlternancy';
+export * from './startAlternancy';
+export * from './completeAlternancy';
 
 // ============================================================================
 // TOOL REGISTRY
@@ -78,6 +80,14 @@ import {
   createAlternancyHandler,
   createAlternancyMetadata,
 } from './createAlternancy';
+import {
+  startAlternancyHandler,
+  startAlternancyMetadata,
+} from './startAlternancy';
+import {
+  completeAlternancyHandler,
+  completeAlternancyMetadata,
+} from './completeAlternancy';
 
 /**
  * Registro central de todas as MCP Tools
@@ -130,6 +140,14 @@ export const TOOL_REGISTRY: Record<string, { handler: ToolHandler; metadata: Mcp
   createAlternancy: {
     handler: createAlternancyHandler,
     metadata: createAlternancyMetadata,
+  },
+  startAlternancy: {
+    handler: startAlternancyHandler,
+    metadata: startAlternancyMetadata,
+  },
+  completeAlternancy: {
+    handler: completeAlternancyHandler,
+    metadata: completeAlternancyMetadata,
   },
 };
 

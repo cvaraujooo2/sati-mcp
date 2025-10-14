@@ -13,8 +13,8 @@ import '@testing-library/jest-dom';
 import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
-import { TaskBreakdown } from '@/components/TaskBreakdown';
-import { SET_GLOBALS_EVENT_TYPE } from '@/components/hooks/useOpenAi';
+import { TaskBreakdown } from '@/app/components/TaskBreakdown';
+import { SET_GLOBALS_EVENT_TYPE } from '@/app/components/hooks/useOpenAi';
 
 type Task = { id: string; title: string; completed: boolean };
 

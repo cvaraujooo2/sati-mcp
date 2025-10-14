@@ -55,7 +55,7 @@ export async function startFocusTimerHandler(
     // Verificar se já existe sessão ativa
     const { data: activeSessions, error: activeError } = await supabase
       .from('focus_sessions')
-      .select('id, hyperfocus_id')
+      .select('id, hyperfocus_id, started_at, planned_duration_minutes')
       .is('ended_at', null)
       .limit(1);
 
@@ -68,15 +68,41 @@ export async function startFocusTimerHandler(
       // Verificar se a sessão ativa pertence ao usuário
       const { data: activeHyperfocus } = await supabase
         .from('hyperfocus')
-        .select('user_id')
+        .select('user_id, title')
         .eq('id', activeSessions[0].hyperfocus_id)
         .maybeSingle();
 
       if (activeHyperfocus && activeHyperfocus.user_id === userId) {
-        log.warn({ userId, activeSessionId: activeSessions[0].id }, 'Já existe sessão ativa');
-        throw new BusinessLogicError(
-          'Você já tem uma sessão de foco ativa. Finalize-a antes de iniciar outra.'
-        );
+        const activeSession = activeSessions[0];
+        
+        log.info({ 
+          userId, 
+          activeSessionId: activeSession.id, 
+          action: 'auto_finalize' 
+        }, 'Finalizando sessão ativa automaticamente');
+
+        // Auto-finalizar sessão ativa ao invés de bloquear
+        const { error: endError } = await supabase
+          .from('focus_sessions')
+          .update({ 
+            ended_at: new Date().toISOString(),
+          })
+          .eq('id', activeSession.id);
+
+        if (endError) {
+          log.error({ error: endError, sessionId: activeSession.id }, 'Erro ao finalizar sessão ativa');
+          
+          // Se falhar ao finalizar, informar o usuário com mensagem útil
+          throw new BusinessLogicError(
+            `Você tem uma sessão ativa de "${activeHyperfocus.title || 'Foco'}" que não pôde ser finalizada automaticamente. ` +
+            `Por favor, peça para finalizá-la primeiro: "Finalize minha sessão de foco ativa".`
+          );
+        }
+
+        log.info({ 
+          oldSessionId: activeSession.id, 
+          userId 
+        }, 'Sessão ativa finalizada com sucesso, iniciando nova sessão');
       }
     }
 
@@ -128,7 +154,7 @@ export async function startFocusTimerHandler(
         },
       },
       component: {
-        type: 'fullscreen',
+        type: 'expanded',
         name: 'FocusTimer',
         props: {
           sessionId: session.id,
@@ -139,6 +165,8 @@ export async function startFocusTimerHandler(
           },
           durationMinutes: validated.durationMinutes,
           startedAt: session.started_at,
+          endsAt: endTime.toISOString(),
+          status: 'active' as const,
           playSound: validated.playSound,
         },
       },

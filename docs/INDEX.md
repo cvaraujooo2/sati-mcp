@@ -26,7 +26,36 @@
 │   ├── Riscos e mitigações
 │   └── Go-to-market strategy
 │
-├── 🗓️ PLANO-SPRINTS.md (12 páginas) ⭐ EXECUTION PLAN
+├── � GUIA-IMPLEMENTACAO-INTEGRACAO-COMPONENTES.md ⭐ NEW!
+│   ├── Plano completo de integração (4 fases)
+│   ├── Fase 1: Criar hooks de integração
+│   ├── Fase 2: Refatorar componentes
+│   ├── Fase 3: Testes
+│   ├── Fase 4: Documentação
+│   └── Exemplos de código passo a passo
+│
+├── ✅ IMPLEMENTACAO-FASE-1-HOOKS.md ⭐ NEW!
+│   ├── Hooks implementados (useAuth, useHyperfocus, useTasks, useFocusSession)
+│   ├── Página de testes (/test-hooks)
+│   ├── Estatísticas da implementação
+│   ├── Benefícios (persistência garantida, optimistic updates)
+│   └── Status: ✅ Completo
+│
+├── ✅ IMPLEMENTACAO-FASE-2-REFATORACAO.md ⭐ NEW!
+│   ├── Componentes refatorados (HyperfocusCard, TaskBreakdown, FocusTimer)
+│   ├── Pattern de integração estabelecido
+│   ├── Comparação antes vs depois
+│   ├── Melhorias de UX
+│   └── Status: ✅ Completo
+│
+├── 📖 QUICK-START-HOOKS.md ⭐ NEW!
+│   ├── Guia rápido de uso dos hooks
+│   ├── Exemplos práticos para cada hook
+│   ├── Patterns comuns
+│   ├── Error handling
+│   └── Integração com ChatGPT
+│
+├── �🗓️ PLANO-SPRINTS.md (12 páginas) ⭐ EXECUTION PLAN
 │   ├── Overview (10 sprints = 20 semanas)
 │   ├── Sprint 1-2: Setup + Auth
 │   ├── Sprint 3-4: Core Tools
@@ -48,6 +77,43 @@
 │   ├── CI/CD pipeline
 │   ├── Monitoring e observability
 │   ├── Dependências (package.json)
+│
+├── 🔧 INTEGRACAO-COMPONENTES-SUPABASE-INDEX.md ⭐ NEW
+│   ├── Índice mestre de integração
+│   ├── Roadmap de leitura
+│   ├── Links para todos os guias
+│   └── Quick start guide
+│
+├── 📘 GUIA-IMPLEMENTACAO-INTEGRACAO-COMPONENTES.md (NOVO)
+│   ├── Guia passo a passo para júnior/pleno
+│   ├── Código completo com comentários
+│   ├── Fase 1: Criar hooks (useHyperfocus, useTasks, useFocusSession)
+│   ├── Fase 2: Refatorar componentes
+│   ├── Fase 3: Escrever testes
+│   ├── Fase 4: Documentação
+│   └── Exemplos práticos e templates
+│
+├── ✅ CHECKLIST-IMPLEMENTACAO-RAPIDA.md (NOVO)
+│   ├── Checklist visual de progresso
+│   ├── Templates de código prontos
+│   ├── Estimativas de tempo por tarefa
+│   ├── Comandos úteis
+│   └── Validações em cada etapa
+│
+├── 📊 DIAGRAMAS-FLUXOS.md (NOVO)
+│   ├── Arquitetura atual vs. nova
+│   ├── Fluxo detalhado de toggle de tarefa
+│   ├── Estrutura de arquivos visual
+│   ├── Mapeamento Service → Hook → Component
+│   ├── Fluxo de dados bidirecional
+│   └── Estratégia de testes (pirâmide)
+│
+├── 🔧 TROUBLESHOOTING.md (NOVO)
+│   ├── 10+ problemas comuns com soluções
+│   ├── Ferramentas de debug
+│   ├── Comandos de diagnóstico
+│   ├── Quando pedir ajuda
+│   └── Formato para abrir issues
 │   └── Performance targets
 │
 ├── 💻 CODIGO-EXEMPLO.md (8 páginas) ⭐ HANDS-ON
