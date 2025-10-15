@@ -179,3 +179,4 @@ function isNewModel(releaseDate: string): boolean {
   return diffDays <= 30
 }
 
+

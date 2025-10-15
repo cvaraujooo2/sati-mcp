@@ -145,3 +145,4 @@ supabase db push
 **Última atualização:** 14/01/2025 (Ações 1 e 2 concluídas)
 **Status:** Implementação core completa, UI totalmente integrada, falta apenas aplicar migrations e testar
 
+

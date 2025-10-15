@@ -46,3 +46,4 @@ COMMENT ON COLUMN public.user_preferences.preferred_provider IS 'User preferred 
 COMMENT ON COLUMN public.user_preferences.preferred_model IS 'User preferred model ID';
 COMMENT ON COLUMN public.user_preferences.model_warnings_dismissed IS 'Array of dismissed model warning IDs';
 
+

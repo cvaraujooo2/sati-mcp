@@ -98,3 +98,4 @@ COMMENT ON COLUMN public.user_usage_limits.tier IS 'User tier: free (uses system
 COMMENT ON FUNCTION reset_daily_usage_limits() IS 'Cron job: Reset daily usage counters at midnight';
 COMMENT ON FUNCTION reset_monthly_usage_limits() IS 'Cron job: Reset monthly usage counters on 1st of month';
 
+

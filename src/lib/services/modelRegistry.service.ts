@@ -353,3 +353,4 @@ export const modelRegistry = new ModelRegistryService()
 // Export das listas base para uso externo se necessário
 export { OPENAI_MODELS, ANTHROPIC_MODELS, GOOGLE_MODELS }
 
+

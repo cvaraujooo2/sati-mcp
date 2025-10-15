@@ -292,3 +292,4 @@ ORDER BY count DESC;
 **Documentação criada em:** 15/10/2025  
 **Versão:** 1.0.0
 
+
