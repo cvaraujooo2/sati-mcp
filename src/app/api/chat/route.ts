@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { OpenAI } from 'openai'
 import { streamText, tool, type CoreMessage } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
+import { createAnthropic } from '@ai-sdk/anthropic'
+import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createClient } from '@/lib/supabase/server'
 import { TOOL_REGISTRY, listAllToolMetadata, getToolHandler } from '@/lib/mcp/tools'
 import {
@@ -26,6 +28,9 @@ import {
   globalToolRegistry,
   type ToolMetadata
 } from '@/lib/mcp/optimized-registry'
+import { usageLimitsService } from '@/lib/services/usageLimits.service'
+import { userPreferencesService } from '@/lib/services/userPreferences.service'
+import { modelRegistry } from '@/lib/services/modelRegistry.service'
 
 // Types baseados no MCPJam/inspector
 interface ChatMessage {
@@ -289,32 +294,109 @@ export async function POST(req: NextRequest) {
     const userId = user.id
     console.log('[Chat API] Authenticated user:', userId)
 
-    // 3. Buscar API key do usuário
+    // 3. Buscar preferências do usuário (provider e modelo preferido)
+    const preferences = await userPreferencesService.getPreferences()
+    const preferredProvider = preferences?.preferred_provider || 'openai'
+    const preferredModelId = preferences?.preferred_model || 'gpt-40-mini'
+
+    console.log('[Chat API] User preferences:', {
+      provider: preferredProvider,
+      model: preferredModelId
+    })
+
+    // 4. Buscar API key do usuário para o provider preferido
     const { data: apiKeyData, error: keyError } = await supabase
       .from('user_api_keys')
       .select('encrypted_key')
       .eq('user_id', userId)
-      .eq('provider', 'openai')
+      .eq('provider', preferredProvider)
       .single()
 
-    console.log('[API Key Query]', { userId, keyError, hasData: !!apiKeyData })
+    console.log('[API Key Query]', { userId, provider: preferredProvider, hasData: !!apiKeyData })
 
-    if (keyError || !apiKeyData) {
-      console.error('[API Key Error]', keyError)
+    // 5. Sistema de Fallback para usuários sem API key (Free Tier)
+    let apiKey: string | undefined = apiKeyData?.encrypted_key
+    let usingFallback = false
+    let usageInfo: { remainingDaily: number; remainingMonthly: number } | null = null
+
+    if (!apiKey) {
+      console.log('[Chat API] No user API key found, checking fallback eligibility')
+
+      // Verificar limites de uso
+      const limitCheck = await usageLimitsService.checkUserLimit(userId)
+
+      if (!limitCheck.canUse) {
+        console.error('[Chat API] Free tier limit reached:', limitCheck.reason)
+        return NextResponse.json({
+          error: 'Limite de uso gratuito atingido. Configure sua API key em Settings para uso ilimitado.',
+          errorCode: 'LIMIT_REACHED',
+          usageInfo: {
+            remainingDaily: limitCheck.remainingDaily,
+            remainingMonthly: limitCheck.remainingMonthly
+          }
+        }, { status: 429 })
+      }
+
+      // Usar API key do sistema (apenas OpenAI no fallback)
+      apiKey = process.env.SYSTEM_OPENAI_KEY
+      usingFallback = true
+      usageInfo = {
+        remainingDaily: limitCheck.remainingDaily,
+        remainingMonthly: limitCheck.remainingMonthly
+      }
+
+      console.log('[Chat API] Using system fallback API key', {
+        remainingDaily: limitCheck.remainingDaily,
+        remainingMonthly: limitCheck.remainingMonthly
+      })
+    }
+
+    if (!apiKey) {
       return NextResponse.json({
-        error: 'API key not found. Please configure your OpenAI API key in Settings.'
+        error: 'Sistema temporariamente indisponível. Configure sua API key em Settings.',
+        errorCode: 'NO_API_KEY'
+      }, { status: 503 })
+    }
+
+    // 6. Validar e obter modelo correto
+    const model = modelRegistry.getValidModelOrDefault(
+      preferredModelId,
+      usingFallback ? 'openai' : preferredProvider
+    )
+
+    console.log('[Chat API] Using model:', {
+      id: model.id,
+      name: model.name,
+      provider: model.provider,
+      usingFallback
+    })
+
+    // 7. Configurar provider client baseado no tipo
+    let providerClient: any
+
+    if (usingFallback || preferredProvider === 'openai') {
+      providerClient = createOpenAI({
+        apiKey: apiKey,
+      })
+    } else if (preferredProvider === 'anthropic') {
+      providerClient = createAnthropic({
+        apiKey: apiKey,
+      })
+    } else if (preferredProvider === 'google') {
+      providerClient = createGoogleGenerativeAI({
+        apiKey: apiKey,
+      })
+    } else {
+      return NextResponse.json({
+        error: `Provider ${preferredProvider} não suportado`,
+        errorCode: 'UNSUPPORTED_PROVIDER'
       }, { status: 400 })
     }
 
-    // 4. Configurar OpenAI client
-    const openai = createOpenAI({
-      apiKey: apiKeyData.encrypted_key, // TODO: Implementar decrypt se necessário
-    })
-
-    // 5. Gerenciador de histórico de conversas
+    // 8. Gerenciador de histórico de conversas
     const historyManager = new ConversationHistoryManager(supabase)
 
-    // 6. Carregar contexto de conversa anterior se necessário
+    // 9. Carregar contexto de conversa anterior se necessário
     let contextualSystemPrompt = validatedData.systemPrompt || `
 Você é o SATI, um assistente especializado em ajudar pessoas neurodivergentes (ADHD/Autismo) com foco e produtividade.
 
@@ -647,11 +729,13 @@ Qual desses você quer trabalhar agora?"
           }
 
           const finalMessages = await createMultiStepStreamingResponse(
-            openai(validatedData.model),
+            providerClient(model.id),
             tools,
             streamingContext,
             validatedData.temperature,
-            userId
+            userId,
+            usingFallback,
+            usageInfo
           )
 
           // Salvar conversa no Supabase para continuidade
@@ -706,7 +790,9 @@ Qual desses você quer trabalhar agora?"
       tools: Record<string, any>,
       streamingContext: StreamingContext,
       temperature: number,
-      userId: string
+      userId: string,
+      usingFallback: boolean = false,
+      usageInfo: { remainingDaily: number; remainingMonthly: number } | null = null
     ): Promise<ConversationMessage[]> {
       let steps = 0
       const generatedMessages: ConversationMessage[] = []
@@ -902,6 +988,23 @@ Qual desses você quer trabalhar agora?"
 
       if (steps >= MAX_AGENT_STEPS) {
         console.log(`[SATI] Reached maximum steps (${MAX_AGENT_STEPS})`)
+      }
+
+      // Se estiver usando fallback, incrementar contador de uso
+      if (usingFallback) {
+        await usageLimitsService.incrementUsage(userId)
+        console.log('[SATI] Incremented fallback usage counter for user:', userId)
+      }
+
+      // Enviar informações de uso para o cliente
+      if (usingFallback && usageInfo) {
+        sendSseEvent(streamingContext.controller, streamingContext.encoder, {
+          type: 'usage_info',
+          usingFallback: true,
+          remainingDaily: usageInfo.remainingDaily - 1, // -1 porque já incrementamos
+          remainingMonthly: usageInfo.remainingMonthly - 1,
+          tier: 'free'
+        })
       }
 
       return generatedMessages

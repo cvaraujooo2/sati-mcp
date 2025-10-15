@@ -33,12 +33,16 @@ import {
 } from "lucide-react"
 
 import { ApiKeyForm } from '@/app/components/settings/ApiKeyForm'
+import { ModelWarningsBanner } from '@/app/components/settings/ModelWarningsBanner'
 import { apiKeyService, type ApiProvider, type UserApiKey } from '@/lib/services/apiKey.service'
+import { userPreferencesService } from '@/lib/services/userPreferences.service'
+import { ModelWarning } from '@/lib/chat/types'
 import { useTheme } from '@/lib/hooks/useTheme'
 
 export default function SettingsPage() {
   const [apiKeys, setApiKeys] = useState<UserApiKey[]>([])
   const [loading, setLoading] = useState(true)
+  const [warnings, setWarnings] = useState<ModelWarning[]>([])
   const { theme, setTheme } = useTheme()
   
   // Carregar API keys do usuário
@@ -57,10 +61,29 @@ export default function SettingsPage() {
     loadApiKeys()
   }, [])
 
+  // Carregar warnings de modelos
+  useEffect(() => {
+    async function loadWarnings() {
+      try {
+        const activeWarnings = await userPreferencesService.getActiveWarnings()
+        setWarnings(activeWarnings)
+      } catch (error) {
+        console.error('Error loading warnings:', error)
+      }
+    }
+    
+    loadWarnings()
+  }, [])
+
   // Callback quando uma API key é atualizada
   const handleApiKeyUpdated = async () => {
     const keys = await apiKeyService.listApiKeys()
     setApiKeys(keys)
+  }
+
+  // Callback quando um warning é dismissado
+  const handleWarningDismissed = (warningId: string) => {
+    setWarnings(prev => prev.filter(w => w.id !== warningId))
   }
 
   // Providers suportados
@@ -83,7 +106,7 @@ export default function SettingsPage() {
     {
       id: 'anthropic',
       name: 'Anthropic',
-      description: 'Claude 3.5 Sonnet (em breve)',
+      description: 'Claude 3.5 Sonnet, Claude 3 Opus e outros modelos da família Claude',
       placeholder: 'sk-ant-...',
       getKeyUrl: 'https://console.anthropic.com/',
       icon: '🧠'
@@ -91,7 +114,7 @@ export default function SettingsPage() {
     {
       id: 'google',
       name: 'Google AI',
-      description: 'Gemini models (em breve)',
+      description: 'Gemini Pro, Gemini Flash e outros modelos do Google',
       placeholder: 'AI...',
       getKeyUrl: 'https://aistudio.google.com/app/apikey',
       icon: '🔍'
@@ -108,6 +131,16 @@ export default function SettingsPage() {
 
   return (
     <div className="container mx-auto p-4 md:p-6 max-w-5xl">
+      {/* Warnings Banner */}
+      {warnings.length > 0 && (
+        <div className="mb-6">
+          <ModelWarningsBanner 
+            warnings={warnings}
+            onWarningDismissed={handleWarningDismissed}
+          />
+        </div>
+      )}
+
       <div className="mb-6 md:mb-8">
         <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-3">
           <Settings className="w-6 h-6 md:w-8 md:h-8 text-primary" />
@@ -195,11 +228,6 @@ export default function SettingsPage() {
                                 Configurado
                               </Badge>
                             )}
-                            {provider.id !== 'openai' && (
-                              <Badge variant="outline" className="text-xs">
-                                Em breve
-                              </Badge>
-                            )}
                           </div>
                         </div>
                       </CardHeader>
@@ -221,19 +249,13 @@ export default function SettingsPage() {
                           </div>
                         )}
 
-                        {/* Form de API key ou botão para obter */}
-                        {provider.id === 'openai' ? (
-                          <ApiKeyForm
-                            provider={provider.id}
-                            placeholder={provider.placeholder}
-                            onApiKeyUpdated={handleApiKeyUpdated}
-                            hasApiKey={hasKey}
-                          />
-                        ) : (
-                          <div className="text-center py-4 text-muted-foreground">
-                            Suporte para {provider.name} chegará em breve
-                          </div>
-                        )}
+                        {/* Form de API key */}
+                        <ApiKeyForm
+                          provider={provider.id}
+                          placeholder={provider.placeholder}
+                          onApiKeyUpdated={handleApiKeyUpdated}
+                          hasApiKey={hasKey}
+                        />
 
                         {/* Link para obter API key */}
                         <div className="flex items-center justify-center">

@@ -7,7 +7,8 @@ import {
   UseChatOptions,
   ToolCall,
   ToolResult,
-  ChatStreamEvent
+  ChatStreamEvent,
+  UsageInfo
 } from "./types"
 import { 
   createMessage, 
@@ -18,44 +19,13 @@ import {
   loadMessagesFromStorage
 } from "./utils"
 
-// Modelos suportados baseado no MCPJam mas focado no SATI
-const SUPPORTED_MODELS: ModelDefinition[] = [
-  {
-    id: "gpt-4o",
-    name: "GPT-4o",
-    provider: "openai",
-    maxTokens: 128000,
-    supportsFunctions: true,
-  },
-  {
-    id: "gpt-4o-mini",
-    name: "GPT-4o Mini",
-    provider: "openai",
-    maxTokens: 128000,
-    supportsFunctions: true,
-  },
-  {
-    id: "gpt-4-turbo",
-    name: "GPT-4 Turbo",
-    provider: "openai",
-    maxTokens: 128000,
-    supportsFunctions: true,
-  },
-  {
-    id: "claude-3-5-sonnet-20241022",
-    name: "Claude 3.5 Sonnet",
-    provider: "anthropic",
-    maxTokens: 200000,
-    supportsFunctions: true,
-  },
-  {
-    id: "claude-3-5-haiku-20241022", 
-    name: "Claude 3.5 Haiku",
-    provider: "anthropic",
-    maxTokens: 200000,
-    supportsFunctions: true,
-  }
-]
+// Importar registry de modelos
+import { modelRegistry } from '@/lib/services/modelRegistry.service'
+import { userPreferencesService } from '@/lib/services/userPreferences.service'
+import { apiKeyService } from '@/lib/services/apiKey.service'
+
+// Modelos suportados vêm agora do registry
+const SUPPORTED_MODELS: ModelDefinition[] = modelRegistry.getAllModels()
 
 interface ElicitationRequest {
   requestId: string
@@ -84,9 +54,11 @@ export function useChat(options: UseChatOptions = {}) {
   })
 
   const [input, setInput] = useState("")
-  const [model, setModel] = useState<ModelDefinition | null>(SUPPORTED_MODELS[1]) // GPT-4o Mini como padrão
+  const [model, setModel] = useState<ModelDefinition | null>(null) // Carregado das preferências
+  const [usageInfo, setUsageInfo] = useState<UsageInfo | null>(null)
   const [elicitationRequest, setElicitationRequest] = useState<ElicitationRequest | null>(null)
   const [elicitationLoading, setElicitationLoading] = useState(false)
+  const [userPreferencesLoaded, setUserPreferencesLoaded] = useState(false)
 
   // Refs
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -100,49 +72,91 @@ export function useChat(options: UseChatOptions = {}) {
   // Supabase client (memoizado para evitar múltiplas instâncias)
   const supabase = useMemo(() => createClient(), [])
 
-  // Check if user has API key
+  // Check if user has API key and load preferences
   const [hasApiKey, setHasApiKey] = useState(false)
   
   useEffect(() => {
-    async function checkApiKey() {
+    async function loadUserPreferencesAndApiKeys() {
       try {
-        // Verificar autenticação e API key
+        // Verificar autenticação
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) {
           setHasApiKey(false)
+          setUserPreferencesLoaded(true)
           return
         }
         
-        const { data, error } = await supabase
-          .from("user_api_keys")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("provider", "openai")
-          .single()
+        // Carregar preferências do usuário
+        const preferences = await userPreferencesService.getPreferences()
+        
+        if (preferences) {
+          // Buscar modelo preferido
+          const preferredModel = modelRegistry.getModelById(preferences.preferred_model)
           
-        if (error && error.code !== 'PGRST116') {
-          console.error("Error checking API key:", error)
-          setHasApiKey(false)
-          return
+          if (preferredModel && !preferredModel.deprecated) {
+            setModel(preferredModel)
+          } else {
+            // Fallback para modelo default do provider
+            const defaultModel = modelRegistry.getDefaultModelForProvider(preferences.preferred_provider)
+            setModel(defaultModel || null)
+          }
+        } else {
+          // Se não tem preferências, usar GPT-4.0 Mini
+          const defaultModel = modelRegistry.getDefaultModelForProvider('openai')
+          setModel(defaultModel || null)
         }
         
-        setHasApiKey(!!data)
+        // Verificar se tem API key para algum provider
+        const availableProviders = await apiKeyService.getAvailableProviders()
+        setHasApiKey(availableProviders.length > 0)
+        
+        setUserPreferencesLoaded(true)
+        
       } catch (error) {
-        console.error("Error in checkApiKey:", error)
+        console.error("Error loading user preferences:", error)
         setHasApiKey(false)
+        setUserPreferencesLoaded(true)
+        
+        // Fallback para modelo default
+        const defaultModel = modelRegistry.getDefaultModelForProvider('openai')
+        setModel(defaultModel || null)
       }
     }
 
-    checkApiKey()
+    loadUserPreferencesAndApiKeys()
   }, [supabase])
 
   // Available models based on API keys
-  const availableModels = useMemo(() => {
-    if (!hasApiKey) return []
-    return SUPPORTED_MODELS.filter(m => !m.disabled)
+  const [availableProviders, setAvailableProviders] = useState<string[]>([])
+
+  useEffect(() => {
+    async function loadAvailableProviders() {
+      const providers = await apiKeyService.getAvailableProviders()
+      setAvailableProviders(providers)
+    }
+    if (hasApiKey) {
+      loadAvailableProviders()
+    }
   }, [hasApiKey])
 
-  // Auto-select first available model
+  const availableModels = useMemo(() => {
+    // Sempre mostrar modelos OpenAI (podem usar fallback)
+    const openaiModels = modelRegistry.getActiveModelsByProvider('openai')
+    
+    if (!hasApiKey) {
+      // Modo beta/free tier: apenas OpenAI com fallback
+      return openaiModels
+    }
+    
+    // Filtrar modelos baseado nos providers disponíveis (quando tem API key)
+    const models = SUPPORTED_MODELS.filter(m => 
+      !m.disabled && 
+      !m.deprecated &&
+      availableProviders.includes(m.provider)
+    )
+    
+    return models.length > 0 ? models : openaiModels
+  }, [hasApiKey, availableProviders])  // Auto-select first available model
   useEffect(() => {
     if (availableModels.length > 0 && !model) {
       setModel(availableModels[0])
@@ -150,8 +164,20 @@ export function useChat(options: UseChatOptions = {}) {
   }, [availableModels, model])
 
   // Handle model change
-  const handleModelChange = useCallback((newModel: ModelDefinition) => {
+  const handleModelChange = useCallback(async (newModel: ModelDefinition) => {
     setModel(newModel)
+    
+    // Persistir no backend
+    try {
+      await userPreferencesService.updatePreferredModel(
+        newModel.provider as 'openai' | 'anthropic' | 'google',
+        newModel.id
+      )
+      console.log('[useChat] Model preference saved:', newModel.id)
+    } catch (error) {
+      console.error('[useChat] Failed to save model preference:', error)
+    }
+    
     onModelChange?.(newModel)
   }, [onModelChange])
 
@@ -161,8 +187,11 @@ export function useChat(options: UseChatOptions = {}) {
     attachments: any[] = []
   ) => {
     if (!content.trim() || state.isLoading) return
-    if (!model || !hasApiKey) {
-      onError?.("Modelo não selecionado ou API key não configurada")
+    
+    // Validar apenas se o modelo está selecionado
+    // API key não é obrigatória (modo beta/fallback)
+    if (!model) {
+      onError?.("Modelo não selecionado")
       return
     }
 
@@ -364,6 +393,12 @@ export function useChat(options: UseChatOptions = {}) {
         else if (event.type === "error") {
           throw new Error(event.error || "Erro no streaming")
         }
+        else if (event.type === "usage_info") {
+          // Capturar informações de uso (free tier, fallback, etc.)
+          if (event.usageInfo) {
+            setUsageInfo(event.usageInfo)
+          }
+        }
       }
 
       // Final update of assistant message - preserve the updated toolCalls with status
@@ -509,6 +544,7 @@ export function useChat(options: UseChatOptions = {}) {
     model,
     availableModels,
     hasApiKey,
+    usageInfo,
     elicitationRequest,
     elicitationLoading,
 

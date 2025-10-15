@@ -91,7 +91,7 @@ export interface SATIToolResult extends ToolResult {
   structuredContent?: any
 }
 
-// Model types (reaproveitados do MCPJam)
+// Model types (reaproveitados do MCPJam) - EXPANDIDO
 export interface ModelDefinition {
   id: string
   name: string
@@ -100,15 +100,68 @@ export interface ModelDefinition {
   disabledReason?: string
   maxTokens?: number
   supportsFunctions?: boolean
+  // Novos campos para gerenciamento de modelos
+  deprecated?: boolean
+  replacementModel?: string // ID do modelo que substitui este
+  releaseDate?: string // Data de lançamento (ISO format)
+  description?: string // Descrição detalhada do modelo
+}
+
+// User Preferences
+export interface UserPreferences {
+  id: string
+  user_id: string
+  preferred_provider: 'openai' | 'anthropic' | 'google'
+  preferred_model: string
+  model_warnings_dismissed: string[] // Array de warning IDs já vistos
+  created_at: string
+  updated_at: string
+}
+
+// Model Warnings
+export interface ModelWarning {
+  id: string
+  type: 'deprecated' | 'new_model' | 'name_change'
+  severity: 'info' | 'warning' | 'critical'
+  modelId: string
+  modelName: string
+  message: string
+  actionLabel?: string
+  actionUrl?: string
+  replacementModelId?: string
+  dismissible: boolean
+}
+
+// Usage Limits
+export interface UserUsageLimits {
+  id: string
+  user_id: string
+  daily_requests_used: number
+  monthly_requests_used: number
+  last_request_date: string
+  last_reset_date: string
+  monthly_reset_date: string
+  tier: 'free' | 'byok'
+  created_at: string
+  updated_at: string
+}
+
+// Usage Info (enviado no chat stream)
+export interface UsageInfo {
+  usingFallback: boolean
+  remainingDailyRequests: number | null
+  remainingMonthlyRequests: number | null
+  tier: 'free' | 'byok'
 }
 
 // Stream events
 export interface ChatStreamEvent {
-  type: 'text' | 'tool_call' | 'tool_result' | 'error' | 'done'
+  type: 'text' | 'tool_call' | 'tool_result' | 'error' | 'done' | 'usage_info'
   content?: string
   toolCall?: ToolCall
   toolResult?: ToolResult
   error?: string
+  usageInfo?: UsageInfo
   timestamp?: Date
 }
 

@@ -128,25 +128,26 @@ async function validateOpenAIKey(apiKey: string): Promise<ValidateKeyResponse> {
     const data = await response.json()
     
     // Verificar se tem acesso aos modelos necessários
-    const hasGPT4 = data.data?.some((model: any) => 
-      model.id.includes('gpt-4') || model.id.includes('gpt-3.5')
+    // Aceita GPT-4, GPT-5 ou GPT-3.5
+    const hasGPTModels = data.data?.some((model: any) => 
+      model.id.includes('gpt-4') || model.id.includes('gpt-5') || model.id.includes('gpt-3.5')
     )
 
-    if (!hasGPT4) {
+    if (!hasGPTModels) {
       return {
         isValid: false,
-        error: 'API key não tem acesso aos modelos GPT-4 ou GPT-3.5',
+        error: 'API key não tem acesso aos modelos GPT',
       }
     }
 
-    // Pegar primeiro modelo GPT-4 disponível
-    const gpt4Model = data.data?.find((model: any) => 
-      model.id.includes('gpt-4')
+    // Pegar primeiro modelo GPT disponível (priorizar GPT-4 Mini ou GPT-5)
+    const preferredModel = data.data?.find((model: any) => 
+      model.id.includes('gpt-4-mini') || model.id.includes('gpt-5') || model.id.includes('gpt-4')
     )
 
     return {
       isValid: true,
-      model: gpt4Model?.id || data.data?.[0]?.id || 'gpt-4',
+      model: preferredModel?.id || data.data?.[0]?.id || 'gpt-40-mini',
     }
 
   } catch (error) {

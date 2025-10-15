@@ -4,11 +4,13 @@ import { useEffect, useRef, useState } from "react"
 import { useChat } from "@/lib/chat/hooks"
 import { ChatInput } from "./ChatInput"
 import { Message } from "./Message"
+import { ModelSelector } from "./ModelSelector"
+import { UsageLimitBanner } from "./UsageLimitBanner"
 import { TooltipProvider } from "@/app/components/ui/tooltip"
 import { Button } from "@/app/components/ui/button"
 import { motion, AnimatePresence } from "framer-motion"
 import { MessageCircle, Sparkles, Settings, Zap } from "lucide-react"
-import { ChatInterfaceProps } from "@/lib/chat/types"
+import { ChatInterfaceProps, UsageInfo } from "@/lib/chat/types"
 import { cn } from "@/lib/chat/utils"
 
 // Quick start prompts específicos para SATI
@@ -54,6 +56,7 @@ export function ChatInterface({
     model,
     availableModels,
     hasApiKey,
+    usageInfo,
     sendMessage,
     stopGeneration,
     clearChat,
@@ -162,69 +165,33 @@ export function ChatInterface({
     setInput(message)
   }
 
-  // Check if we need to show setup
-  if (!hasApiKey) {
-    return (
-      <TooltipProvider>
-        <div className={cn("flex flex-col h-full", className)}>
-          <div className="flex-1 flex flex-col items-center justify-center px-4 py-8">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="w-full max-w-md space-y-6 text-center"
-            >
-              {/* SATI Logo/Icon */}
-              <div className="w-16 h-16 mx-auto bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center">
-                <Zap className="h-8 w-8 text-white" />
-              </div>
-
-              <div className="space-y-2">
-                <h2 className="text-2xl font-bold text-foreground">
-                  Bem-vindo ao SATI
-                </h2>
-                <p className="text-muted-foreground">
-                  Seu assistente de produtividade para neurodivergentes
-                </p>
-              </div>
-
-              <div className="space-y-4 text-sm text-muted-foreground">
-                <p>
-                  Para começar, você precisa configurar sua API key da OpenAI.
-                </p>
-                <div className="bg-muted/50 border rounded-lg p-4 space-y-2">
-                  <p className="font-medium text-foreground">Modelo BYOK:</p>
-                  <ul className="space-y-1 text-left">
-                    <li>• Você mantém controle total dos seus dados</li>
-                    <li>• Sem limites de uso</li>
-                    <li>• Suporte a múltiplos modelos</li>
-                    <li>• Zero lock-in</li>
-                  </ul>
-                </div>
-              </div>
-
-              <Button
-                size="lg"
-                className="w-full"
-                onClick={() => {
-                  // TODO: Navigate to settings or show API key modal
-                  console.log("Navigate to API key setup")
-                }}
-              >
-                <Settings className="h-4 w-4 mr-2" />
-                Configurar API Key
-              </Button>
-            </motion.div>
-          </div>
-        </div>
-      </TooltipProvider>
-    )
-  }
-
   // Empty state with quick start
   if (messages.length === 0) {
     return (
       <TooltipProvider>
         <div className={cn("flex flex-col h-full", className)}>
+          {/* Beta/Free Tier Banner - mostrar se NÃO tiver API key */}
+          {!hasApiKey && (
+            <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20 border-b border-blue-200 dark:border-blue-800">
+              <div className="max-w-4xl mx-auto px-4 py-3">
+                <div className="flex items-start gap-3">
+                  <Sparkles className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                      Modo Beta - Acesso Gratuito Limitado
+                    </p>
+                    <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                      Você está usando nossa API compartilhada. Para acesso ilimitado, configure sua própria API key nas{' '}
+                      <a href="/settings" className="underline hover:text-blue-900 dark:hover:text-blue-100">
+                        configurações
+                      </a>.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex-1 flex flex-col items-center justify-center px-4 py-8">
             <motion.div
               initial={{ opacity: 0, y: 10 }}
@@ -268,8 +235,21 @@ export function ChatInterface({
           </div>
 
           {/* Chat input at bottom */}
-          <div className="border-t bg-background/95 backdrop-blur p-4">
-            <div className="max-w-4xl mx-auto">
+          <div className="border-t bg-background/95 backdrop-blur">
+            {/* Model Selector Header */}
+            {model && availableModels.length > 0 && (
+              <div className="max-w-4xl mx-auto px-4 pt-3 pb-2">
+                <ModelSelector
+                  currentModel={model}
+                  availableModels={availableModels}
+                  onModelChange={handleModelChange}
+                  disabled={isLoading}
+                />
+              </div>
+            )}
+            
+            {/* Input Area */}
+            <div className="max-w-4xl mx-auto p-4 pt-2">
               <ChatInput
                 value={input}
                 onChange={setInput}
@@ -295,6 +275,14 @@ export function ChatInterface({
   return (
     <TooltipProvider>
       <div className={cn("flex flex-col h-full", className)}>
+        {/* Usage Limit Banner - mostrar se estiver usando fallback */}
+        {usageInfo?.usingFallback && (
+          <UsageLimitBanner
+            remainingDaily={usageInfo.remainingDailyRequests || 0}
+            remainingMonthly={usageInfo.remainingMonthlyRequests || 0}
+          />
+        )}
+
         {/* Messages area */}
         <div 
           ref={messagesContainerRef}
@@ -375,8 +363,34 @@ export function ChatInterface({
         </div>
 
         {/* Chat input */}
-        <div className="border-t bg-background/95 backdrop-blur p-4">
-          <div className="max-w-4xl mx-auto">
+        <div className="border-t bg-background/95 backdrop-blur">
+          {/* Model Selector Header */}
+          {model && availableModels.length > 0 && (
+            <div className="max-w-4xl mx-auto px-4 pt-3 pb-2">
+              <div className="flex items-center justify-between">
+                <ModelSelector
+                  currentModel={model}
+                  availableModels={availableModels}
+                  onModelChange={handleModelChange}
+                  disabled={isLoading}
+                />
+                {messages.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearChat}
+                    disabled={isLoading}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Limpar conversa
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+          
+          {/* Input Area */}
+          <div className="max-w-4xl mx-auto p-4 pt-2">
             <ChatInput
               value={input}
               onChange={setInput}

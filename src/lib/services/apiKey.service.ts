@@ -158,6 +158,7 @@ export class ApiKeyService {
   /**
    * Valida uma API key testando uma chamada via endpoint backend
    * IMPORTANTE: Agora usa endpoint backend para não expor key no cliente
+   * EXPANDIDO: Suporta OpenAI, Anthropic e Google
    */
   async validateApiKey(provider: ApiProvider, apiKey: string): Promise<ApiKeyValidationResult> {
     try {
@@ -195,6 +196,58 @@ export class ApiKeyService {
         isValid: false, 
         error: 'Erro de conexão. Verifique sua internet.',
       }
+    }
+  }
+
+  /**
+   * Verifica se o usuário tem API key para um provider específico
+   */
+  async hasApiKeyForProvider(provider: ApiProvider): Promise<boolean> {
+    try {
+      const { data: { user } } = await this.supabase.auth.getUser()
+      if (!user) return false
+
+      const { data, error } = await this.supabase
+        .from("user_api_keys")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("provider", provider)
+        .single()
+
+      if (error && error.code !== 'PGRST116') {
+        console.error("Error checking API key:", error)
+        return false
+      }
+
+      return !!data
+    } catch (error) {
+      console.error("Error in hasApiKeyForProvider:", error)
+      return false
+    }
+  }
+
+  /**
+   * Retorna lista de providers para os quais o usuário tem API keys
+   */
+  async getAvailableProviders(): Promise<ApiProvider[]> {
+    try {
+      const { data: { user } } = await this.supabase.auth.getUser()
+      if (!user) return []
+
+      const { data, error } = await this.supabase
+        .from("user_api_keys")
+        .select("provider")
+        .eq("user_id", user.id)
+
+      if (error) {
+        console.error("Error getting available providers:", error)
+        return []
+      }
+
+      return (data || []).map(row => row.provider as ApiProvider)
+    } catch (error) {
+      console.error("Error in getAvailableProviders:", error)
+      return []
     }
   }
 
